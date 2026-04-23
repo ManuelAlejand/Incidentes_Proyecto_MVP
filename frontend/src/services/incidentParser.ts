@@ -12,7 +12,8 @@ const COL_MTTR_SUMMARY  = "MTTR Promedio (minutos)";
 const COL_MTBF_SUMMARY  = "MTBF (horas)";
 const COL_OP_TIME       = "Tiempo Total de Operación (h)";
 const COL_FAILURES      = "Número de Fallas";
-const COL_IMPACT        = "Impacto"; // Nueva columna opcional
+const COL_IMPACT        = "Impacto"; 
+const COL_RECURRENT     = "Incidentes Recurrentes"; // Nueva columna para resiliencia
 
 const CHART_COLORS = ['#4F81BD', '#70AD47', '#00B0F0', '#FF6B35', '#9B59B6', '#E74C3C', '#F39C12', '#1ABC9C'];
 
@@ -97,6 +98,7 @@ export function parseIncidentsFrontend(rawExcelData: any[], projectName?: string
       impact,
       impact_color,
       date: String(r[COL_DATE] || "Fecha no registrada").trim(),
+      recurrent_count: parseInt(r[COL_RECURRENT]) || 0,
     };
   });
 
@@ -252,6 +254,39 @@ export function parseIncidentsFrontend(rawExcelData: any[], projectName?: string
     }
   }
 
+  // --- LÓGICA DE RESILIENCIA (Top Offenders) ---
+  const mapAction = (source: string): string => {
+    const s = source.toLowerCase();
+    if (s.includes('base de datos') || s.includes('database') || s.includes('db')) return "OPTIMIZACIÓN QUERIES";
+    if (s.includes('api gateway') || s.includes('gateway')) return "REFACTORIZAR CÓDIGO DE API";
+    if (s.includes('servidor web') || s.includes('web server')) return "TUNEADO DE PARÁMETROS";
+    if (s.includes('error operativo')) return "CAPACITACIÓN / AUTOMATIZACIÓN";
+    if (s.includes('red interna') || s.includes('network')) return "REVISIÓN DE TOPOLOGÍA";
+    if (s.includes('infraestructura')) return "ESCALAMIENTO DE RECURSOS";
+    if (s.includes('microservicio')) return "ANÁLISIS DE DEPENDENCIAS";
+    return "ANÁLISIS DE CAUSA RAÍZ";
+  };
+
+  // 1. Intentar obtener de columna "Incidentes Recurrentes"
+  let top_offenders_raw = incidents.filter(i => (i as any).recurrent_count > 0);
+  
+  // 2. Fallback: Si no hay recurrentes marcados, tomar los 3 primeros del proyecto
+  if (top_offenders_raw.length === 0) {
+    top_offenders_raw = incidents.slice(0, 3);
+  }
+
+  const top_offenders = top_offenders_raw.slice(0, 5).map(inc => {
+    const fallas = (inc as any).recurrent_count || 1;
+    return {
+      sistema: inc.service,
+      fallas: fallas,
+      recurrencia: Number(((fallas / finalTotal) * 100).toFixed(1)),
+      causa: inc.source,
+      accion: mapAction(inc.source),
+      description: inc.description
+    };
+  });
+
   return {
     project_id: targetProject,
     summary: {
@@ -271,5 +306,8 @@ export function parseIncidentsFrontend(rawExcelData: any[], projectName?: string
       message: analysisMessage.trim(),
       action_required: actionRequired,
     },
+    resilience: {
+      top_offenders
+    }
   };
 }

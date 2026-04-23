@@ -55,6 +55,19 @@ export interface ServiceSummary {
   trend_data: { month: string; availability: number }[];
 }
 
+export interface ResilienceOffender {
+  sistema: string;
+  fallas: number;
+  recurrencia: number;
+  causa: string;
+  accion: string;
+  description: string;
+}
+
+export interface ResilienceData {
+  top_offenders: ResilienceOffender[];
+}
+
 export interface IncidentAnalysis {
   message: string;
   action_required: boolean;
@@ -67,4 +80,5 @@ export interface IncidentResponse {
   incidents: IncidentDetail[];
   services: ServiceSummary[];
   analysis: IncidentAnalysis;
+  resilience: ResilienceData;
 }

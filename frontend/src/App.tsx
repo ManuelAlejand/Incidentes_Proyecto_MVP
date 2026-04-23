@@ -360,11 +360,11 @@ function App() {
               </div>
               <div className="font-bold text-sm mb-4">Top Offenders</div>
               <div style={{display: 'flex', flexDirection: 'column', gap: '0.8rem'}}>
-                {topOffenders.map((item, idx) => (
+                {(dynamicData?.resilience.top_offenders || topOffenders).map((item: any, idx: number) => (
                   <div key={idx} style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.8rem', borderBottom: '1px solid #f0f0f0', paddingBottom: '0.5rem'}}>
                     <div>
-                      <div style={{fontWeight: 700, color: 'var(--navy)'}}>{item.name}</div>
-                      <div style={{fontSize: '0.7rem', color: 'var(--text-muted)'}}>Recurrencia: {item.recurrencia}</div>
+                      <div style={{fontWeight: 700, color: 'var(--navy)'}}>{item.sistema || (item as any).name}</div>
+                      <div style={{fontSize: '0.7rem', color: 'var(--text-muted)'}}>Recurrencia: {item.recurrencia}%</div>
                     </div>
                     <div style={{color: '#f44336', fontWeight: 700}}>{item.fallas} fallas</div>
                   </div>
@@ -643,13 +643,22 @@ function App() {
                     </tr>
                   </thead>
                   <tbody>
-                    {resilienciaDetalle.map((o, idx) => (
+                    {(dynamicData?.resilience.top_offenders || resilienciaDetalle).map((o: any, idx: number) => (
                       <tr key={idx}>
                         <td style={{fontWeight: 700}}>{o.sistema}</td>
                         <td>{o.fallas}</td>
                         <td>{o.recurrencia}%</td>
                         <td>{o.causa}</td>
-                        <td><span className="capacity-badge" style={{background: '#F0F9FF', color: '#0170B8'}}>{o.accion}</span></td>
+                        <td>
+                          <span className="capacity-badge" style={{
+                            background: 'rgba(0, 80, 246, 0.05)', 
+                            color: 'var(--blue)',
+                            fontWeight: 700,
+                            fontSize: '0.7rem'
+                          }}>
+                            {o.accion}
+                          </span>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -658,13 +667,28 @@ function App() {
             </div>
             <div className="detail-section">
               <h3>Análisis RCA (Root Cause Analysis)</h3>
-              <div style={{background: '#FFF5F5', padding: '1.5rem', borderRadius: '8px', borderLeft: '4px solid #f44336', marginBottom: '1rem'}}>
-                <strong style={{color: '#8b0000'}}>App Móvil:</strong> Análisis de performance reveló queries N+1 en módulo de transacciones. 
-                Implementación de caché Redis redujo latencia en 65%.
-              </div>
-              <div style={{background: '#F0F9FF', padding: '1.5rem', borderRadius: '8px', borderLeft: '4px solid var(--blue)'}}>
-                <strong style={{color: 'var(--navy)'}}>E-commerce:</strong> Timeouts en API de pagos durante picos de carga. 
-                Escalado automático configurado para manejar 3x carga base.
+              <div style={{display: 'flex', flexDirection: 'column', gap: '1rem'}}>
+                {(dynamicData?.resilience.top_offenders || []).slice(0, 3).map((o, idx) => (
+                  <div key={idx} style={{
+                    background: idx === 0 ? '#FFF5F5' : '#F0F9FF', 
+                    padding: '1.5rem', 
+                    borderRadius: '8px', 
+                    borderLeft: `4px solid ${idx === 0 ? '#f44336' : 'var(--blue)'}`
+                  }}>
+                    <strong style={{color: idx === 0 ? '#8b0000' : 'var(--navy)', display: 'block', marginBottom: '0.5rem'}}>
+                      {o.sistema}: {o.description}
+                    </strong>
+                    <div style={{fontSize: '0.9rem', color: 'var(--text-secondary)'}}>
+                      <strong>Solución Aplicada:</strong> {o.accion === "OPTIMIZACIÓN QUERIES" ? "Se procedió con la creación de índices compuestos y revisión de planes de ejecución." : 
+                      o.accion === "REFACTORIZAR CÓDIGO DE API" ? "Optimización de middlewares y reducción de llamadas redundantes a microservicios." :
+                      o.accion === "ESCALAMIENTO DE RECURSOS" ? "Ajuste de límites de CPU/RAM en el clúster de Kubernetes." :
+                      "Implementación de medidas preventivas y monitoreo avanzado."}
+                    </div>
+                  </div>
+                ))}
+                {(!dynamicData || dynamicData.resilience.top_offenders.length === 0) && (
+                   <p>No hay datos dinámicos de resiliencia disponibles. Por favor carga un Excel válido.</p>
+                )}
               </div>
             </div>
           </div>
