@@ -2,7 +2,11 @@ export interface IncidentSummary {
   total: number;
   avg_recovery_minutes: number;
   avg_recovery_formatted: string;
+  mtbf_hours: number;
+  mtbf_formatted: string;
   services_affected: number;
+  total_operation_hours: number;
+  total_failures: number;
 }
 
 export interface IncidentBySource {
@@ -22,8 +26,33 @@ export interface IncidentDetail {
   recovery_formatted: string;
   source: string;
   impact: 'Crítico' | 'Alto' | 'Bajo';
-  impact_color: 'red' | 'orange' | 'green';
+  impact_color: string;
   date: string;
+}
+
+export interface ServiceSummary {
+  name: string;
+  availability: number;
+  availability_formatted: string;
+  incident_count: number;
+  impact: 'Crítico' | 'Alto' | 'Bajo';
+  impact_color: string;
+  deployments: {
+    total: number;
+    success: number;
+    failed: number;
+    rate: number;
+    rate_formatted: string;
+  };
+  capacity: {
+    alerts: number;
+    status: 'normal' | 'warning' | 'critical';
+    message: string;
+    recommendation: string;
+  };
+  incidents: IncidentDetail[];
+  main_source: string;
+  trend_data: { month: string; availability: number }[];
 }
 
 export interface IncidentAnalysis {
@@ -36,5 +65,6 @@ export interface IncidentResponse {
   summary: IncidentSummary;
   by_source: IncidentBySource[];
   incidents: IncidentDetail[];
+  services: ServiceSummary[];
   analysis: IncidentAnalysis;
 }

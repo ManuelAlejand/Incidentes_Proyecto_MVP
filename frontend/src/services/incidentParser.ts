@@ -1,13 +1,5 @@
-import type { IncidentResponse, IncidentDetail, IncidentBySource } from '../types/incident';
-
-export function formatMinutes(minutes: number): string {
-  if (!minutes || minutes === 0) return "0min";
-  if (minutes < 60) return `${minutes}min`;
-  if (minutes % 60 === 0) return `${Math.floor(minutes / 60)}h`;
-  const h = Math.floor(minutes / 60);
-  const m = Math.floor(minutes % 60);
-  return `${h}h ${m}min`;
-}
+import type { IncidentResponse, IncidentDetail, IncidentBySource, ServiceSummary } from '../types/incident';
+import { formatMTTR, formatMTBF } from '../utils/formatTime';
 
 // Constantes de las columnas V3 (debe coincidir con el Excel actual)
 const COL_PROJECT       = "Nombre del Proyecto";
@@ -17,6 +9,11 @@ const COL_SOURCE        = "Fuente del Incidente";
 const COL_MTTR          = "MTTR del Incidente (minutos)";
 const COL_DATE          = "Fecha del Incidente";
 const COL_MTTR_SUMMARY  = "MTTR Promedio (minutos)";
+const COL_MTBF_SUMMARY  = "MTBF (horas)";
+const COL_OP_TIME       = "Tiempo Total de Operación (h)";
+const COL_FAILURES      = "Número de Fallas";
+const COL_IMPACT        = "Impacto"; // Nueva columna opcional
+
 const CHART_COLORS = ['#4F81BD', '#70AD47', '#00B0F0', '#FF6B35', '#9B59B6', '#E74C3C', '#F39C12', '#1ABC9C'];
 
 const SUMMARY_COLUMNS = [
@@ -59,6 +56,9 @@ export function parseIncidentsFrontend(rawExcelData: any[], projectName?: string
 
   // Datos de resumen — tomados de la primera fila (son idénticos en todas las filas del proyecto)
   const summaryRow = projectRows[0];
+  const globalCriticals = parseInt(summaryRow["Incidentes Críticos Totales"]) || 0;
+  const opTimeHours = parseFloat(summaryRow[COL_OP_TIME]) || 720; // Default 1 month
+  const numFallasGlobal = parseInt(summaryRow[COL_FAILURES]) || 0;
 
   // Filas de detalle: solo las que tienen "Servicio del Incidente" no vacío
   const incidentRows = projectRows.filter(r => {
@@ -70,23 +70,29 @@ export function parseIncidentsFrontend(rawExcelData: any[], projectName?: string
   const incidents: IncidentDetail[] = incidentRows.map((r, idx) => {
     const mttr_minutes = parseFloat(r[COL_MTTR]) || 0;
 
+    // Lógica de clasificación de impacto
     let impact: 'Crítico' | 'Alto' | 'Bajo' = 'Bajo';
-    let impact_color: 'red' | 'orange' | 'green' = 'green';
-
-    if (mttr_minutes > 180) {
-      impact = 'Crítico';
-      impact_color = 'red';
-    } else if (mttr_minutes >= 60) {
-      impact = 'Alto';
-      impact_color = 'orange';
+    
+    // Si existe la columna de impacto en el Excel, usarla. Si no, calcular por MTTR.
+    const rawImpact = r[COL_IMPACT] ? String(r[COL_IMPACT]).trim().toLowerCase() : null;
+    
+    if (rawImpact) {
+      if (rawImpact.includes('crit') || rawImpact.includes('crít')) impact = 'Crítico';
+      else if (rawImpact.includes('alt')) impact = 'Alto';
+      else impact = 'Bajo';
+    } else {
+      if (mttr_minutes >= 480) impact = 'Crítico';
+      else if (mttr_minutes >= 120) impact = 'Alto';
     }
+
+    const impact_color = impact === 'Crítico' ? '#E74C3C' : impact === 'Alto' ? '#F39C12' : '#70AD47';
 
     return {
       index: idx + 1,
       service: String(r[COL_SERVICE] || "").trim(),
       description: String(r[COL_DESCRIPTION] || "Sin descripción registrada").trim(),
       mttr_minutes,
-      recovery_formatted: formatMinutes(mttr_minutes),
+      recovery_formatted: formatMTTR(mttr_minutes),
       source: String(r[COL_SOURCE] || "Sin clasificar").trim(),
       impact,
       impact_color,
@@ -96,6 +102,98 @@ export function parseIncidentsFrontend(rawExcelData: any[], projectName?: string
 
   // Ordenar por fecha descendente
   incidents.sort((a, b) => b.date.localeCompare(a.date));
+
+  // --- AGRUPACIÓN POR SERVICIOS (Spec Sección 1 y 3) ---
+  const servicesMap: Record<string, IncidentDetail[]> = {};
+  incidents.forEach(inc => {
+    if (!servicesMap[inc.service]) servicesMap[inc.service] = [];
+    servicesMap[inc.service].push(inc);
+  });
+
+  const services: ServiceSummary[] = Object.entries(servicesMap).map(([name, serviceIncidents]) => {
+    const totalMTTR = serviceIncidents.reduce((sum, i) => sum + i.mttr_minutes, 0);
+    const opTimeMin = opTimeHours * 60;
+    
+    // Disponibilidad (Spec Sección 6)
+    const availability = opTimeMin > 0 ? ((opTimeMin - totalMTTR) / opTimeMin) * 100 : 100;
+    
+    // Determinar impacto del servicio (priorizando incidentes del servicio)
+    let serviceImpact: 'Crítico' | 'Alto' | 'Bajo' = 'Bajo';
+    const serviceIncidentCount = serviceIncidents.length;
+
+    if (serviceIncidentCount >= 5 || serviceIncidents.some(i => i.impact === 'Crítico')) {
+      serviceImpact = 'Crítico';
+    } else if (serviceIncidentCount >= 2 || serviceIncidents.some(i => i.impact === 'Alto')) {
+      serviceImpact = 'Alto';
+    }
+
+    const serviceImpactColor = serviceImpact === 'Crítico' ? '#E74C3C' : serviceImpact === 'Alto' ? '#F39C12' : '#70AD47';
+
+    // Lógica Hardcoded: Despliegues
+    let deployments = { total: 8, success: 8, failed: 0, rate: 100, rate_formatted: '100.0%' };
+    if (serviceImpact === 'Crítico') deployments = { total: 12, success: 10, failed: 2, rate: 83.3, rate_formatted: '83.3%' };
+    else if (serviceImpact === 'Alto') deployments = { total: 10, success: 9, failed: 1, rate: 90.0, rate_formatted: '90.0%' };
+
+    // Lógica Hardcoded: Capacidad (Basada en impacto del servicio)
+    let capacity = { 
+      alerts: 0, 
+      status: 'normal' as const, 
+      message: 'No hay alertas de capacidad. Todos los recursos operando normal.',
+      recommendation: 'Operación estable.'
+    };
+    if (serviceImpact === 'Crítico') {
+      capacity = { 
+        alerts: 3, 
+        status: 'critical' as const, 
+        message: '3 Alertas Activas: Memoria 92%, CPU 88%, Conexiones DB 95%.',
+        recommendation: 'Acción inmediata requerida. Escalar recursos.'
+      };
+    } else if (serviceImpact === 'Alto') {
+      capacity = { 
+        alerts: 1, 
+        status: 'warning' as const, 
+        message: '1 Alerta Activa: Conexiones DB 85%.',
+        recommendation: 'Monitorear de cerca. Considerar optimización.'
+      };
+    }
+
+    // Análisis de Causa Raíz (Moda)
+    const sources = serviceIncidents.map(i => i.source);
+    const sourceMode = sources.sort((a,b) =>
+          sources.filter(v => v===a).length
+        - sources.filter(v => v===b).length
+    ).pop() || 'Sin clasificar';
+
+    // Simulación de Tendencia (Spec Sección 4B)
+    const baseTrend = serviceImpact === 'Crítico' ? 98.5 : serviceImpact === 'Alto' ? 99.4 : 99.8;
+    const trend_data = ['Sep', 'Oct', 'Nov', 'Dic', 'Ene', 'Feb'].map((m, idx) => ({
+      month: m,
+      availability: Number((baseTrend + (Math.random() * 0.4 - 0.2)).toFixed(2))
+    }));
+
+    return {
+      name,
+      availability,
+      availability_formatted: availability.toFixed(2) + '%',
+      incident_count: serviceIncidents.length,
+      impact: serviceImpact,
+      impact_color: serviceImpactColor,
+      deployments,
+      capacity,
+      incidents: serviceIncidents,
+      main_source: sourceMode,
+      trend_data
+    };
+  });
+
+  // Ordenar tabla de servicios: Crítico > Alto > Bajo, luego MTTR desc
+  services.sort((a, b) => {
+    const impactOrder = { 'Crítico': 0, 'Alto': 1, 'Bajo': 2 };
+    if (impactOrder[a.impact] !== impactOrder[b.impact]) {
+      return impactOrder[a.impact] - impactOrder[b.impact];
+    }
+    return b.availability - a.availability; // Sort by availability desc (worst first if impact is same)
+  });
 
   // MTTR promedio: desde filas de detalle, fallback a columna de resumen
   let avgMinutes = 0;
@@ -107,7 +205,7 @@ export function parseIncidentsFrontend(rawExcelData: any[], projectName?: string
   }
 
   // Servicios afectados: count distinct
-  const uniqueServices = new Set(incidents.map(i => i.service));
+  const uniqueServicesCount = new Set(incidents.map(i => i.service)).size;
 
   // Total de incidentes: desde detalle, fallback a suma de columnas de resumen
   const totalFromSummary = SUMMARY_COLUMNS.reduce((sum, col) => sum + (parseFloat(summaryRow[col]) || 0), 0);
@@ -117,7 +215,6 @@ export function parseIncidentsFrontend(rawExcelData: any[], projectName?: string
   const by_source: IncidentBySource[] = [];
 
   if (incidents.length > 0) {
-    // Fuentes dinámicas desde filas de detalle
     const sourceCount: Record<string, number> = {};
     incidents.forEach(i => {
       const s = i.source;
@@ -125,36 +222,13 @@ export function parseIncidentsFrontend(rawExcelData: any[], projectName?: string
     });
     Object.entries(sourceCount).forEach(([s, count], idx) => {
       by_source.push({
-        name: s,
-        source: s,
-        count,
+        name: s, source: s, count,
         percentage: Number(((count / incidents.length) * 100).toFixed(1)),
         value: count,
         color: CHART_COLORS[idx % CHART_COLORS.length],
       });
     });
     by_source.sort((a, b) => b.count - a.count);
-  } else if (finalTotal > 0) {
-    // Fallback: usar columnas de resumen agregadas
-    const aggData = [
-      { name: "Críticos", key: "Incidentes Críticos Totales" },
-      { name: "Recurrentes", key: "Incidentes Recurrentes" },
-      { name: "Error Operativo", key: "Incidentes por Error Operativo" },
-      { name: "Base de Datos", key: "Incidentes por Base de Datos" },
-      { name: "API Gateway", key: "Incidentes por API Gateway" },
-    ];
-    let colorIdx = 0;
-    aggData.forEach(({ name, key }) => {
-      const count = parseFloat(summaryRow[key]) || 0;
-      if (count > 0) {
-        by_source.push({
-          name, source: name, count,
-          percentage: Number(((count / finalTotal) * 100).toFixed(1)),
-          value: count,
-          color: CHART_COLORS[colorIdx++ % CHART_COLORS.length],
-        });
-      }
-    });
   }
 
   // Análisis automático
@@ -168,19 +242,14 @@ export function parseIncidentsFrontend(rawExcelData: any[], projectName?: string
     if (by_source.length > 0) {
       analysisMessage += `Causa principal: ${by_source[0].source}. `;
     }
-    if (avgMinutes > 180) {
-      analysisMessage += "MTTR alto — se recomienda revisar tiempos de respuesta y recuperación.";
+    if (finalTotal >= 5) {
+      analysisMessage += "Alerta: El volumen de incidentes ha superado el umbral aceptable.";
       actionRequired = true;
-    } else if (avgMinutes >= 60) {
-      analysisMessage += "MTTR en rango medio — se recomienda monitoreo continuo.";
-    } else if (avgMinutes > 0) {
-      analysisMessage += "MTTR bajo — buen desempeño en recuperación de incidentes.";
+    } else if (finalTotal >= 2) {
+      analysisMessage += "Se recomienda revisar las fuentes recurrentes de incidentes.";
+    } else {
+      analysisMessage += "Incidentes dentro de los parámetros normales de operación.";
     }
-    if (by_source.length > 3) {
-      analysisMessage += " Se detectaron múltiples fuentes de falla — se recomienda estandarizar procesos.";
-      actionRequired = true;
-    }
-    if (finalTotal > 5) actionRequired = true;
   }
 
   return {
@@ -188,11 +257,16 @@ export function parseIncidentsFrontend(rawExcelData: any[], projectName?: string
     summary: {
       total: finalTotal,
       avg_recovery_minutes: avgMinutes,
-      avg_recovery_formatted: formatMinutes(avgMinutes),
-      services_affected: uniqueServices.size,
+      avg_recovery_formatted: formatMTTR(avgMinutes),
+      mtbf_hours: parseFloat(summaryRow[COL_MTBF_SUMMARY]) || 0,
+      mtbf_formatted: formatMTBF(parseFloat(summaryRow[COL_MTBF_SUMMARY]) || 0),
+      services_affected: uniqueServicesCount,
+      total_operation_hours: opTimeHours,
+      total_failures: numFallasGlobal
     },
     by_source,
     incidents,
+    services,
     analysis: {
       message: analysisMessage.trim(),
       action_required: actionRequired,
