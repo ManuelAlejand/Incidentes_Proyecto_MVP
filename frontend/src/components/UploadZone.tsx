@@ -70,6 +70,24 @@ export const UploadZone = () => {
 
       const projectNames = [...new Set(jsonData.map((r: any) => r["Nombre del Proyecto"]).filter(Boolean))];
       
+      // Enviar el archivo al backend para guardar temp_excel.xlsx
+      // (necesario para que el endpoint de disponibilidad pueda procesarlo)
+      try {
+        const formData = new FormData();
+        formData.append('file', file);
+        const backendResponse = await fetch('http://localhost:8000/api/upload', {
+          method: 'POST',
+          body: formData,
+        });
+        if (!backendResponse.ok) {
+          console.warn('[UploadZone] Backend upload respondió con error:', backendResponse.status);
+        }
+      } catch (backendErr) {
+        // El backend no está disponible — los incidentes seguirán funcionando
+        // pero la disponibilidad no estará disponible
+        console.warn('[UploadZone] No se pudo conectar al backend:', backendErr);
+      }
+
       // Mock result (MVP requirement)
       const mockResult = { "2026-02": [] };
       

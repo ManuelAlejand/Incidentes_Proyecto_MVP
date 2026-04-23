@@ -6,7 +6,8 @@ import re
 import pandas as pd
 from typing import List
 
-# Columnas obligatorias V3
+# Columnas obligatorias V3 — se valida que TODAS estén presentes
+# Usa prefijos comunes para tolerar variantes de nombre (con/sin acento, con/sin 's', etc.)
 REQUIRED_COLUMNS_V3 = [
     "Nombre del Proyecto",
     "Equipo Responsable",
@@ -17,9 +18,9 @@ REQUIRED_COLUMNS_V3 = [
     "Incidentes Críticos Totales",
     "MTTR Promedio (minutos)",
     "MTBF (horas)",
-    "Tiempo Total de Operación (horas)",
+    "Tiempo Total de Operación",  # Acepta "(h)" o "(horas)" — basta con el prefijo
     "Número de Fallas",
-    "Tiempo de Solución por Ticket (min)",
+    "Tiempo de Solución por Ticket",
     "Incidentes Recurrentes",
     "Incidentes por Error Operativo",
     "Incidentes por Base de Datos",
@@ -34,9 +35,16 @@ REQUIRED_COLUMNS_V3 = [
 OLD_SCHEMA_PATTERN = re.compile(r"Inc\d+_", re.IGNORECASE)
 
 
+def _normalize(col: str) -> str:
+    """Normaliza un nombre de columna para comparación flexible."""
+    return col.strip().lower()
+
+
 def validate_columns(df: pd.DataFrame) -> None:
     """
-    Valida que el DataFrame contenga exactamente las columnas V3.
+    Valida que el DataFrame contenga las columnas V3.
+    Usa coincidencia por prefijo (case-insensitive, sin espacios extra)
+    para tolerar variantes como '(h)' vs '(horas)' en columnas de tiempo.
     Lanza ValueError con mensaje descriptivo si falla.
     """
     # Detectar esquema antiguo
@@ -44,10 +52,22 @@ def validate_columns(df: pd.DataFrame) -> None:
     if old_cols:
         raise ValueError("Esquema desactualizado: usa la plantilla v3")
 
-    # Validar columnas requeridas
-    missing = [c for c in REQUIRED_COLUMNS_V3 if c not in df.columns]
+    # Columnas del Excel normalizadas para comparación
+    excel_cols_normalized = [_normalize(c) for c in df.columns]
+
+    # Validar cada columna requerida usando coincidencia de prefijo
+    missing = []
+    for required in REQUIRED_COLUMNS_V3:
+        req_normalized = _normalize(required)
+        # Una columna del Excel "pasa" si empieza con el prefijo requerido
+        found = any(excel_col.startswith(req_normalized) for excel_col in excel_cols_normalized)
+        if not found:
+            missing.append(required)
+
     if missing:
         raise ValueError(f"Faltan columnas requeridas: {', '.join(missing)}")
+
+
 
 
 def group_project_data(df: pd.DataFrame, project_name: str) -> dict:

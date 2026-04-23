@@ -6,6 +6,7 @@ from fastapi import APIRouter, UploadFile, File, HTTPException
 import pandas as pd
 import io
 
+from app.repositories.data_repository import get_dataframes
 from app.services.excel_parser import validate_columns, group_project_data, get_all_projects
 from app.services.incident_parser import parse_incidents
 
@@ -23,16 +24,30 @@ async def upload_excel(file: UploadFile = File(...)):
 
     contents = await file.read()
 
+    import os
+    BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    temp_path = os.path.join(BASE_DIR, "temp_excel.xlsx")
+    
+    with open(temp_path, "wb") as f:
+        f.write(contents)
+
     try:
-        df = pd.read_excel(io.BytesIO(contents))
+        df, df_availability = get_dataframes(contents)
     except Exception as e:
         raise HTTPException(status_code=422, detail=f"Error leyendo el archivo Excel: {str(e)}")
 
-    # Tarea 1.2 y 1.3: Validar esquema (detecta antiguo y columnas faltantes)
+    # Tarea 1.2 y 1.3: Validar esquema Hoja 1
     try:
         validate_columns(df)
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
+
+    # Tarea 2.4: Validar existencia de Hoja 2
+    if df_availability is None:
+        raise HTTPException(
+            status_code=422, 
+            detail="Falta la hoja 'Componentes de Disponibilidad' requerida para las métricas detalladas."
+        )
 
     # Procesar cada proyecto
     projects = get_all_projects(df)
@@ -44,3 +59,4 @@ async def upload_excel(file: UploadFile = File(...)):
         results.append(incident_data)
 
     return {"projects": results, "total_projects": len(results)}
+

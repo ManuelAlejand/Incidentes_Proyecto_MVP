@@ -1,6 +1,7 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from app.routers import upload
+from fastapi.responses import JSONResponse
+from app.routers import upload, availability
 
 app = FastAPI(
     title="Proyecto Alertas API",
@@ -18,8 +19,24 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Handler global de excepciones no capturadas
+# CRÍTICO: Sin esto, un 500 interno NO incluye los headers CORS y el browser bloquea la respuesta
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    return JSONResponse(
+        status_code=500,
+        content={"detail": f"Error interno del servidor: {str(exc)}"},
+        headers={
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "*",
+            "Access-Control-Allow-Headers": "*",
+        }
+    )
+
 # Incluir los routers existentes
 app.include_router(upload.router, prefix="/api", tags=["Upload"])
+app.include_router(availability.router, prefix="/api", tags=["Availability"])
+
 
 @app.get("/")
 async def root():

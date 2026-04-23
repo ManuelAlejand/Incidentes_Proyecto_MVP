@@ -47,3 +47,15 @@ output:
   backend: ./backend
   frontend: ./frontend
   tests: ./tests
+
+availability:
+  component_types:
+    - "Base de Datos"
+    - "SO Windows"
+    - "SO Linux"
+    - "Capa Media"
+  capacity_thresholds:
+    alert: 5       # >= 5 incidentes → alerta roja
+    warning: 3     # >= 3 incidentes → alerta amarilla
+  trend_months: 6
+  mvp_trend_variation: 0.5  # variación máxima en % para meses simulados

@@ -117,7 +117,7 @@ export function parseIncidentsFrontend(rawExcelData: any[], projectName?: string
     const opTimeMin = opTimeHours * 60;
     
     // Disponibilidad (Spec Sección 6)
-    const availability = opTimeMin > 0 ? ((opTimeMin - totalMTTR) / opTimeMin) * 100 : 100;
+    const availability = opTimeMin > 0 ? Number(((opTimeMin - totalMTTR) / opTimeMin * 100).toFixed(2)) : 100;
     
     // Determinar impacto del servicio (priorizando incidentes del servicio)
     let serviceImpact: 'Crítico' | 'Alto' | 'Bajo' = 'Bajo';

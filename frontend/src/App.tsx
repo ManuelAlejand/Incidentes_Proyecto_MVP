@@ -10,6 +10,8 @@ import {
   modalDisponibilidadGlobal
 } from './data';
 import { useDataStore } from './store/dataStore';
+import { AvailabilityModal } from './components/availability/AvailabilityModal';
+import { ServiceDetailModal } from './components/availability/ServiceDetailModal';
 import { UploadZone } from './components/UploadZone';
 import { parseIncidentsFrontend } from './services/incidentParser';
 import './index.css';
@@ -78,7 +80,10 @@ function App() {
     projectNames, 
     activeProjectName, 
     setActiveProjectName, 
-    resetData 
+    resetData,
+    availabilityData,
+    isLoadingAvailability,
+    fetchAvailabilityData
   } = useDataStore();
 
   const dynamicData = parsedExcelRawData && parsedExcelRawData.length > 0 
@@ -113,6 +118,18 @@ function App() {
                 <option key={name} value={name}>{name}</option>
               ))}
             </select>
+            {/* Mostrar botón Re-sincronizar si el backend no tiene los datos de disponibilidad */}
+            {!availabilityData && !isLoadingAvailability && (
+              <button 
+                className="upload-btn" 
+                onClick={() => activeProjectName && fetchAvailabilityData(activeProjectName)}
+                style={{ background: '#f59e0b', marginRight: '0.5rem' }}
+                title="El backend no tiene los datos. Recarga el archivo para restaurar disponibilidad."
+              >
+                <span className="material-icons">sync_problem</span>
+                Re-sincronizar
+              </button>
+            )}
             <button className="upload-btn" onClick={resetData}>
               <span className="material-icons">cloud_upload</span>
               Cambiar Archivo
@@ -129,16 +146,22 @@ function App() {
           </div>
         ) : (
           <div className="kpi-container">
-            {/* Disponibilidad Global - HARDCODED 100% GREEN as requested */}
+            {/* Disponibilidad Global - Dynamic from Sheet 2 */}
             <div className="kpi-card kpi-card-clickable" onClick={() => setActiveModal('disponibilidad')}>
               <div className="kpi-label">
                 <span className="material-icons">check_circle</span>
                 Disponibilidad Global
               </div>
-              <div className="kpi-value" style={{color: '#00DEBC', textAlign: 'center', fontSize: '2.5rem'}}>
-                100%
+              <div className="kpi-value" style={{
+                color: availabilityData?.global_availability.meets_target ? '#00DEBC' : '#f44336', 
+                textAlign: 'center', 
+                fontSize: '2.5rem'
+              }}>
+                {availabilityData ? `${availabilityData.global_availability.percentage}%` : '--%'}
               </div>
-              <div className="kpi-meta" style={{textAlign: 'center'}}>Meta: 99.47%</div>
+              <div className="kpi-meta" style={{textAlign: 'center'}}>
+                Meta: {availabilityData ? `${availabilityData.global_availability.meta}%` : '---'}
+              </div>
               <div className="kpi-meta" style={{textAlign: 'center'}}>Click para ver detalle</div>
             </div>
 
@@ -238,47 +261,73 @@ function App() {
                     </tr>
                   </thead>
                   <tbody>
-                    {dynamicData?.services.map((s, index) => {
-                      const color = s.availability >= 99.9 ? '#00DEBC' : s.availability >= 99 ? '#01ADEF' : '#f44336';
-                      const capacityColor = s.capacity.alerts === 0 ? '#00DEBC' : s.capacity.alerts <= 2 ? '#01ADEF' : '#f44336';
-                      const capacityIcon = s.capacity.alerts === 0 ? 'check_circle' : s.capacity.alerts <= 2 ? 'warning' : 'error';
-                      
-                      return (
-                        <tr key={index} onClick={() => handleServiceClick(s)}>
-                          <td className="service-name-cell">{s.name}</td>
-                          <td>
-                            <span className="service-metric" style={{color}}>
-                              <span className="material-icons" style={{fontSize: '16px'}}>check_circle</span>
-                              {s.availability_formatted}
-                            </span>
-                          </td>
-                          <td>
-                            <span className="service-metric" style={{color: s.incident_count > 0 ? '#f44336' : 'inherit'}}>
-                              <span className="material-icons" style={{fontSize: '16px'}}>report_problem</span>
-                              {s.incident_count}
-                            </span>
-                          </td>
-                          <td>
-                            <div className="deployment-info">
-                              <span style={{fontSize: '0.8rem', fontWeight: 600}}>
-                                {s.deployments.success}/{s.deployments.total} ({s.deployments.rate_formatted})
+                    {isLoadingAvailability ? (
+                      <tr>
+                        <td colSpan={5} style={{textAlign: 'center', padding: '2rem', color: 'var(--text-muted)'}}>
+                          <span className="material-icons" style={{fontSize: '1.5rem', display: 'block', marginBottom: '0.5rem', opacity: 0.5}}>sync</span>
+                          Cargando datos de disponibilidad...
+                        </td>
+                      </tr>
+                    ) : !availabilityData?.services?.length ? (
+                      <tr>
+                        <td colSpan={5} style={{textAlign: 'center', padding: '2rem', color: 'var(--text-muted)'}}>
+                          <span className="material-icons" style={{fontSize: '1.5rem', display: 'block', marginBottom: '0.5rem', opacity: 0.5}}>cloud_off</span>
+                          No hay datos de disponibilidad del backend. Verifica que el servidor esté activo.
+                        </td>
+                      </tr>
+                    ) : (
+                      availabilityData.services.map((s, index) => {
+                        const avail = s.availability;
+                        const meta = s.meta || 99.5;
+                        const color = avail >= meta ? '#00DEBC' : avail >= (meta - 0.5) ? '#01ADEF' : '#f44336';
+
+                        const capacityCount = s.capacity_alerts?.count ?? 0;
+                        const capacityColor = capacityCount === 0 ? '#00DEBC' : capacityCount <= 2 ? '#01ADEF' : '#f44336';
+                        const capacityIcon = capacityCount === 0 ? 'check_circle' : capacityCount <= 2 ? 'warning' : 'error';
+
+                        const deploymentsRate = s.deployments?.success_rate != null
+                          ? `${s.deployments.success_rate.toFixed(1)}%`
+                          : '0%';
+                        const deploymentsText = `${s.deployments?.successful ?? 0}/${s.deployments?.total ?? 0}`;
+
+                        return (
+                          <tr key={index} onClick={() => handleServiceClick(s)}>
+                            <td className="service-name-cell">{s.name}</td>
+                            <td>
+                              <span className="service-metric" style={{color}}>
+                                <span className="material-icons" style={{fontSize: '16px'}}>check_circle</span>
+                                {avail.toFixed(2)}%
                               </span>
-                              <div className="deployment-bar">
-                                <div className="deployment-fill" style={{width: s.deployments.rate_formatted}}></div>
+                            </td>
+                            <td style={{textAlign: 'center'}}>
+                              <span className="service-metric" style={{color: s.incident_count > 0 ? '#f44336' : 'inherit'}}>
+                                <span className="material-icons" style={{fontSize: '16px'}}>report_problem</span>
+                                {s.incident_count}
+                              </span>
+                            </td>
+                            <td>
+                              <div className="deployment-info">
+                                <span style={{fontSize: '0.8rem', fontWeight: 600}}>
+                                  {deploymentsText} ({deploymentsRate})
+                                </span>
+                                <div className="deployment-bar">
+                                  <div className="deployment-fill" style={{width: deploymentsRate}}></div>
+                                </div>
                               </div>
-                            </div>
-                          </td>
-                          <td style={{textAlign: 'center'}}>
-                            <span className="capacity-badge" style={{background: `${capacityColor}20`, color: capacityColor}}>
-                              <span className="material-icons" style={{fontSize: '14px', verticalAlign: 'middle', marginRight: '4px'}}>
-                                {capacityIcon}
+                            </td>
+                            <td style={{textAlign: 'center'}}>
+                              <span className="capacity-badge" style={{background: `${capacityColor}20`, color: capacityColor}}>
+                                <span className="material-icons" style={{fontSize: '14px', verticalAlign: 'middle', marginRight: '4px'}}>
+                                  {capacityIcon}
+                                </span>
+                                {capacityCount}
                               </span>
-                              {s.capacity.alerts}
-                            </span>
-                          </td>
-                        </tr>
-                      );
-                    })}
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+
                   </tbody>
                 </table>
               </div>
@@ -415,36 +464,7 @@ function App() {
         </div>
       </footer>
 
-      {/* Availability Modal */}
-      {activeModal === 'disponibilidad' && (
-        <div className="modal-overlay" onClick={closeModal}>
-          <div className="modal-content" onClick={e => e.stopPropagation()}>
-            <button className="modal-close-btn" onClick={closeModal}>×</button>
-            <div className="modal-header">
-              <h2 className="modal-title">Tendencia de Disponibilidad Global</h2>
-            </div>
-            <div className="detail-section">
-              <div style={{height: '300px', width: '100%', marginTop: '1rem'}}>
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={modalDisponibilidadGlobal} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                    <XAxis dataKey="name" tick={{fontSize: 12}} />
-                    <YAxis domain={['auto', 'auto']} hide />
-                    <Tooltip cursor={{fill: 'rgba(0, 80, 246, 0.04)'}} />
-                    <ReferenceLine y={99.47} stroke="#f44336" strokeDasharray="3 3" />
-                    <Bar dataKey="value" fill="#00DEBC" radius={[4, 4, 0, 0]} label={{ position: 'top', fill: '#333', fontSize: 12, formatter: (val: any) => `${val}%` }} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-              <div style={{display: 'flex', justifyContent: 'center', gap: '1.5rem', marginTop: '1rem', fontSize: '0.8rem'}}>
-                <div style={{display: 'flex', alignItems: 'center', gap: '0.5rem'}}><div style={{width: 12, height: 12, background: '#00DEBC'}}></div> Cumple meta</div>
-                <div style={{display: 'flex', alignItems: 'center', gap: '0.5rem'}}><div style={{width: 12, height: 12, background: '#f44336'}}></div> No cumple meta</div>
-                <div style={{display: 'flex', alignItems: 'center', gap: '0.5rem'}}><div style={{width: 20, height: 2, background: '#f44336', borderStyle: 'dashed'}}></div> Meta (99.47%)</div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Availability Modal — renderizado al final del árbol para evitar conflictos */}
 
       {/* Incident Modal */}
       {activeModal === 'incidentes' && (
@@ -807,124 +827,33 @@ function App() {
         </div>
       )}
 
-      {/* Service Detail Modal */}
-      {activeModal === 'service' && selectedService && (
-        <div className="modal-overlay" onClick={closeModal}>
-          <div className="modal-content" onClick={e => e.stopPropagation()}>
-            <button className="modal-close-btn" onClick={closeModal}>×</button>
-            
-            <div className="modal-header">
-              <h2 className="modal-title">Detalle: {selectedService.name}</h2>
-            </div>
-
-            <div className="detail-section">
-              <h3><span className="material-icons">analytics</span> Métricas Actuales</h3>
-              <div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '1rem'}}>
-                <div style={{background: '#F4F5F7', padding: '1rem', borderRadius: '8px', textAlign: 'center'}}>
-                  <div style={{fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.5rem', textTransform: 'uppercase'}}>Disponibilidad</div>
-                  <div style={{fontSize: '1.5rem', fontWeight: 700, color: selectedService.availability < 99 ? '#f44336' : '#00DEBC'}}>
-                    {selectedService.availability_formatted}
-                  </div>
-                </div>
-                <div style={{background: '#F4F5F7', padding: '1rem', borderRadius: '8px', textAlign: 'center'}}>
-                  <div style={{fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.5rem', textTransform: 'uppercase'}}>Incidentes</div>
-                  <div style={{fontSize: '1.5rem', fontWeight: 700, color: 'var(--navy)'}}>{selectedService.incident_count}</div>
-                </div>
-                <div style={{background: '#F4F5F7', padding: '1rem', borderRadius: '8px', textAlign: 'center'}}>
-                  <div style={{fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.5rem', textTransform: 'uppercase'}}>Despliegues</div>
-                  <div style={{fontSize: '1.5rem', fontWeight: 700, color: 'var(--blue)'}}>{selectedService.deployments.rate_formatted}</div>
-                </div>
-                <div style={{background: '#F4F5F7', padding: '1rem', borderRadius: '8px', textAlign: 'center'}}>
-                  <div style={{fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.5rem', textTransform: 'uppercase'}}>Alertas</div>
-                  <div style={{fontSize: '1.5rem', fontWeight: 700, color: selectedService.capacity.status === 'critical' ? '#f44336' : '#01ADEF'}}>
-                    {selectedService.capacity.alerts}
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="detail-section">
-              <h3><span className="material-icons">show_chart</span> Tendencia de Disponibilidad</h3>
-              <div style={{height: '200px', width: '100%', background: '#F8F9FB', borderRadius: '8px', padding: '1rem'}}>
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={selectedService.trend_data}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E4E8" />
-                    <XAxis dataKey="month" tick={{fontSize: 10}} axisLine={false} tickLine={false} />
-                    <YAxis domain={['auto', 'auto']} tick={{fontSize: 10}} axisLine={false} tickLine={false} />
-                    <Tooltip contentStyle={{borderRadius: '8px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)'}} />
-                    <Line type="monotone" dataKey="availability" stroke="var(--blue)" strokeWidth={3} dot={{r: 4, fill: 'var(--blue)'}} activeDot={{r: 6}} />
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-
-            <div className="detail-section">
-              <h3><span className="material-icons">speed</span> Análisis de Capacidad</h3>
-              <div style={{
-                borderLeft: `4px solid ${selectedService.capacity.status === 'critical' ? '#f44336' : '#01ADEF'}`,
-                background: selectedService.capacity.status === 'critical' ? '#FFF5F5' : '#F0F9FF',
-                padding: '1.5rem',
-                borderRadius: '8px'
-              }}>
-                <div style={{fontWeight: 700, color: selectedService.capacity.status === 'critical' ? '#f44336' : '#0170B8', marginBottom: '0.5rem'}}>
-                  {selectedService.capacity.message}
-                </div>
-                <div style={{fontSize: '0.85rem', color: 'var(--text-secondary)'}}>
-                  <strong>Recomendación:</strong> {selectedService.capacity.recommendation}
-                </div>
-              </div>
-            </div>
-
-            <div className="detail-section">
-              <h3><span className="material-icons">history</span> Historial de Despliegues</h3>
-              <table className="services-table" style={{fontSize: '0.85rem'}}>
-                <thead>
-                  <tr>
-                    <th>Periodo</th>
-                    <th>Total</th>
-                    <th>Exitosos</th>
-                    <th>Fallidos</th>
-                    <th>Tasa de Éxito</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr>
-                    <td>Mes Actual</td>
-                    <td>{selectedService.deployments.total}</td>
-                    <td style={{color: '#00DEBC', fontWeight: 700}}>{selectedService.deployments.success}</td>
-                    <td style={{color: '#f44336', fontWeight: 700}}>{selectedService.deployments.failed}</td>
-                    <td>{selectedService.deployments.rate_formatted}</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-
-            <div className="detail-section">
-              <h3><span className="material-icons">psychology</span> Análisis de Incidentes</h3>
-              <div style={{background: '#F8F9FB', padding: '1.5rem', borderRadius: '12px', border: '1px solid var(--border)'}}>
-                <div style={{display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1rem'}}>
-                  <span className="material-icons" style={{color: selectedService.incident_count >= 5 ? '#f44336' : '#00DEBC'}}>
-                    {selectedService.incident_count >= 5 ? 'report_problem' : 'verified_user'}
-                  </span>
-                  <span style={{fontWeight: 700, color: 'var(--navy)'}}>
-                    {selectedService.incident_count >= 5 ? 'Alerta de Estabilidad' : 'Operación Estable'}
-                  </span>
-                </div>
-                <p style={{fontSize: '0.9rem', color: 'var(--text-secondary)', lineHeight: 1.5}}>
-                  Se han registrado {selectedService.incident_count} incidentes en el mes actual. 
-                  {selectedService.incident_count >= 5 
-                    ? ' Se requiere revisión inmediata de los logs y escalamiento de recursos.' 
-                    : ' El servicio se mantiene dentro de los parámetros de operación normal.'}
-                </p>
-                <div style={{marginTop: '1.5rem', paddingTop: '1rem', borderTop: '1px dashed var(--gray)', display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
-                  <span style={{fontSize: '0.8rem', color: 'var(--text-muted)'}}>Causa principal identificada:</span>
-                  <span className="capacity-badge" style={{background: 'var(--blue)15', color: 'var(--blue)'}}>{selectedService.main_source}</span>
-                </div>
-              </div>
+      {/* Availability Detail Modal */}
+      {activeModal === 'disponibilidad' && (
+        availabilityData ? (
+          <AvailabilityModal 
+            data={availabilityData.global_availability} 
+            onClose={closeModal} 
+          />
+        ) : (
+          <div className="modal-overlay" onClick={closeModal}>
+            <div className="modal-content" onClick={e => e.stopPropagation()} style={{maxWidth: '500px', textAlign: 'center', padding: '3rem'}}>
+              <button className="modal-close-btn" onClick={closeModal}>×</button>
+              <span className="material-icons" style={{fontSize: '3rem', color: 'var(--navy)', marginBottom: '1rem', display: 'block'}}>cloud_upload</span>
+              <h3 style={{color: 'var(--navy)', marginBottom: '0.5rem'}}>Datos no disponibles</h3>
+              <p style={{color: 'var(--text-muted)', fontSize: '0.9rem'}}>El backend no retornó datos de disponibilidad. Verifica que el archivo Excel esté cargado y el servidor esté activo.</p>
             </div>
           </div>
-        </div>
+        )
       )}
+
+      {/* Service Detail Modal */}
+      {activeModal === 'service' && selectedService && (
+        <ServiceDetailModal 
+          service={selectedService} 
+          onClose={closeModal} 
+        />
+      )}
+
     </div>
   );
 }
