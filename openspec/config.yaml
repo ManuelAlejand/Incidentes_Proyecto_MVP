@@ -1,0 +1,49 @@
+project:
+  name: incident-platform
+  description: Plataforma de gestión de incidentes y excelencia de servicio
+  version: 0.1.0
+
+stack:
+  frontend:
+    framework: react
+    language: typescript
+    bundler: vite
+    state_management: zustand
+    charts: recharts
+    styling: tailwindcss
+  backend:
+    framework: fastapi
+    language: python
+    version: "3.11"
+    data_processing: pandas
+    excel_parser: openpyxl
+    validation: pydantic
+
+conventions:
+  api_prefix: /api/v1
+  response_format: json
+  date_format: ISO8601
+  decimal_separator: dot
+  naming:
+    backend: snake_case
+    frontend: camelCase
+    components: PascalCase
+
+scalability:
+  data_sources:
+    current: excel_upload
+    future:
+      - rest_api
+      - database_query
+      - websocket_stream
+  multi_tenancy:
+    current: single_upload
+    future:
+      - filter_by_team
+      - filter_by_project
+      - filter_by_client
+
+output:
+  backend: ./backend
+  frontend: ./frontend
+  tests: ./tests

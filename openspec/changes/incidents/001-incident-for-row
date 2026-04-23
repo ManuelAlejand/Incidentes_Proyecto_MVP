@@ -1,0 +1,20 @@
+# Change 001: Modelo de una fila por incidente
+
+## Tipo: BREAKING CHANGE — reescritura del parser
+
+## Contexto
+El spec original de incidents asumía columnas Inc1_*, Inc2_* en una sola fila
+por proyecto. Ese modelo fue reemplazado antes de implementarse.
+El modelo correcto es una fila por incidente único en el Excel.
+
+## Nuevo modelo
+Ver specs/excel-ingestion/spec.md sección "Regla de filas"
+Ver specs/incidents/spec.md sección "Lógica de parseo — nueva estructura"
+
+## Qué debe hacer OpenSpec al regenerar
+1. Eliminar toda lógica de detección de columnas con regex Inc\d+_*
+2. Implementar agrupación por "Nombre del Proyecto" con pandas
+3. Separar datos de resumen (primera fila del grupo) de datos de detalle
+4. Filtrar filas de detalle por "Servicio del Incidente" no vacío
+5. Agrupar fuentes dinámicamente con groupby("Fuente del Incidente")
+6. Mantener el contrato JSON del endpoint sin cambios — el frontend no toca nada
