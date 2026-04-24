@@ -3,7 +3,7 @@ models.py — Modelos Pydantic V3
 Incluye los nuevos campos incidentes_por_base_de_datos e incidentes_por_api_gateway.
 """
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, List
 
 
 class ProjectSummary(BaseModel):
@@ -62,6 +62,27 @@ class IncidentSummary(BaseModel):
 class IncidentResponse(BaseModel):
     project_id: str
     summary: IncidentSummary
-    by_source: list[IncidentBySource]
-    incidents: list[IncidentDetail]
+    by_source: List[IncidentBySource]
+    incidents: List[IncidentDetail]
     analysis: IncidentAnalysis
+
+# Trend Models
+class TrendPoint(BaseModel):
+    label: str
+    value: float
+    meets_target: bool
+    is_simulated: bool
+
+class ByTypeSummary(BaseModel):
+    type: str
+    avg: float
+
+class TrendResponse(BaseModel):
+    project_id: str
+    period: str               # "6m" | "3m" | "day"
+    slot: Optional[str] = None       # "0-6" | "6-12" | "12-18" | "18-24" | None
+    component_type: Optional[str] = None
+    meta: float
+    current_value: float
+    data_points: List[TrendPoint]
+    by_type_summary: List[ByTypeSummary]

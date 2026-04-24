@@ -1,7 +1,7 @@
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from app.routers import upload, availability
+from app.routers import upload, availability, availability_trend
 
 app = FastAPI(
     title="Proyecto Alertas API",
@@ -36,6 +36,7 @@ async def global_exception_handler(request: Request, exc: Exception):
 # Incluir los routers existentes
 app.include_router(upload.router, prefix="/api", tags=["Upload"])
 app.include_router(availability.router, prefix="/api", tags=["Availability"])
+app.include_router(availability_trend.router, prefix="/api/v1", tags=["Trend"])
 
 
 @app.get("/")

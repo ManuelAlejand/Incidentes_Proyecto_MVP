@@ -63,16 +63,16 @@ export const ServiceDetailModal: React.FC<ServiceDetailModalProps> = ({ service,
             </div>
             <div style={{ textAlign: 'center', padding: '1rem', background: 'white', borderRadius: '12px' }}>
               <div style={{ fontSize: '0.85rem', fontWeight: 500, color: 'var(--text-muted)', marginBottom: '0.5rem' }}>Incidentes</div>
-              <div style={{ fontSize: '1.8rem', fontWeight: 700, color: 'var(--navy)' }}>{service.incident_count ?? service.incidents ?? 0}</div>
+              <div style={{ fontSize: '1.8rem', fontWeight: 700, color: 'var(--navy)' }}>{service.incident_count ?? 0}</div>
               <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.4rem' }}>Mes Actual</div>
             </div>
             <div style={{ textAlign: 'center', padding: '1rem', background: 'white', borderRadius: '12px' }}>
               <div style={{ fontSize: '0.85rem', fontWeight: 500, color: 'var(--text-muted)', marginBottom: '0.5rem' }}>Tasa de Éxito Despliegues</div>
               <div style={{ fontSize: '1.8rem', fontWeight: 700, color: '#f59e0b' }}>
-                {service.deployments?.success_rate ?? service.deployments?.rate ?? 0}%
+                {service.deployments?.success_rate ?? 0}%
               </div>
               <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.4rem' }}>
-                {service.deployments?.successful ?? service.deployments?.success ?? 0}/{service.deployments?.total ?? 0} Exitosos
+                {service.deployments?.successful ?? 0}/{service.deployments?.total ?? 0} Exitosos
               </div>
             </div>
             <div style={{ textAlign: 'center', padding: '1rem', background: 'white', borderRadius: '12px' }}>
@@ -82,7 +82,7 @@ export const ServiceDetailModal: React.FC<ServiceDetailModalProps> = ({ service,
                 borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', 
                 margin: '0 auto', fontSize: '1.2rem', fontWeight: 700 
               }}>
-                {service.capacity_alerts?.count ?? service.capacity?.alerts ?? 0}
+                {service.capacity_alerts?.count ?? 0}
               </div>
               <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.4rem' }}>Recursos Críticos</div>
             </div>
@@ -194,13 +194,13 @@ export const ServiceDetailModal: React.FC<ServiceDetailModalProps> = ({ service,
           <div style={{ background: '#FFFBEB', borderLeft: '4px solid #F59E0B', padding: '1.5rem', borderRadius: '8px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#D97706', fontWeight: 700, marginBottom: '0.5rem' }}>
               <span className="material-icons">warning</span>
-              {service.capacity_alerts?.count ?? service.capacity?.alerts ?? 0} Alertas Activas
+              {service.capacity_alerts?.count ?? 0} Alertas Activas
             </div>
             <div style={{ fontWeight: 600, fontSize: '0.95rem', color: '#92400E', marginBottom: '0.5rem' }}>
-              {(service.capacity_alerts?.items || service.capacity?.items || []).join(', ')}
+              {(service.capacity_alerts?.items || []).join(', ')}
             </div>
             <div style={{ fontSize: '0.85rem', color: '#92400E', opacity: 0.8 }}>
-              <strong>Recomendación:</strong> {service.capacity_alerts?.recommendation ?? service.capacity?.recommendation ?? 'No hay recomendaciones adicionales.'}
+              <strong>Recomendación:</strong> {service.capacity_alerts?.recommendation ?? 'No hay recomendaciones adicionales.'}
             </div>
           </div>
         </div>
@@ -222,11 +222,11 @@ export const ServiceDetailModal: React.FC<ServiceDetailModalProps> = ({ service,
               <tr>
                 <td style={{ padding: '1.5rem 0.5rem', fontWeight: 600 }}>Mes Actual</td>
                 <td style={{ textAlign: 'center', padding: '1.5rem 0.5rem' }}>{service.deployments?.total ?? 0}</td>
-                <td style={{ textAlign: 'center', padding: '1.5rem 0.5rem', color: '#10B981', fontWeight: 600 }}>{service.deployments?.successful ?? service.deployments?.success ?? 0}</td>
+                <td style={{ textAlign: 'center', padding: '1.5rem 0.5rem', color: '#10B981', fontWeight: 600 }}>{service.deployments?.successful ?? 0}</td>
                 <td style={{ textAlign: 'center', padding: '1.5rem 0.5rem', color: '#EF4444', fontWeight: 600 }}>
-                  {(service.deployments?.total ?? 0) - (service.deployments?.successful ?? service.deployments?.success ?? 0)}
+                  {(service.deployments?.total ?? 0) - (service.deployments?.successful ?? 0)}
                 </td>
-                <td style={{ textAlign: 'center', padding: '1.5rem 0.5rem', fontWeight: 600 }}>{service.deployments?.success_rate ?? service.deployments?.rate ?? 0}%</td>
+                <td style={{ textAlign: 'center', padding: '1.5rem 0.5rem', fontWeight: 600 }}>{service.deployments?.success_rate ?? 0}%</td>
               </tr>
             </tbody>
           </table>
@@ -237,10 +237,10 @@ export const ServiceDetailModal: React.FC<ServiceDetailModalProps> = ({ service,
           <h3 style={{ fontSize: '1.1rem', fontWeight: 600, color: 'var(--navy)', marginBottom: '1rem' }}>Análisis de Incidentes</h3>
           <div style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
             <span style={{ color: '#EF4444', fontWeight: 700 }}>Alerta: </span>
-            {service.incident_analysis?.message ?? `Análisis basado en ${service.incident_count ?? service.incidents ?? 0} incidentes registrados.`}
-            {(service.incident_analysis?.main_cause || service.main_source) && (
+            {service.incident_analysis?.message ?? `Análisis basado en ${service.incident_count ?? 0} incidentes registrados.`}
+            {service.incident_analysis?.main_cause && (
               <div style={{ marginTop: '0.5rem' }}>
-                <strong>Causa principal identificada:</strong> {service.incident_analysis?.main_cause ?? service.main_source}.
+                <strong>Causa principal identificada:</strong> {service.incident_analysis.main_cause}.
               </div>
             )}
           </div>

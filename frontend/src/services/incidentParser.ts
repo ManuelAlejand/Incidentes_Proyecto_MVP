@@ -137,23 +137,23 @@ export function parseIncidentsFrontend(rawExcelData: any[], projectName?: string
     else if (serviceImpact === 'Alto') deployments = { total: 10, success: 9, failed: 1, rate: 90.0, rate_formatted: '90.0%' };
 
     // Lógica Hardcoded: Capacidad (Basada en impacto del servicio)
-    let capacity = { 
+    let capacity: { alerts: number; status: 'normal' | 'warning' | 'critical'; message: string; recommendation: string } = { 
       alerts: 0, 
-      status: 'normal' as const, 
+      status: 'normal', 
       message: 'No hay alertas de capacidad. Todos los recursos operando normal.',
       recommendation: 'Operación estable.'
     };
     if (serviceImpact === 'Crítico') {
       capacity = { 
         alerts: 3, 
-        status: 'critical' as const, 
+        status: 'critical', 
         message: '3 Alertas Activas: Memoria 92%, CPU 88%, Conexiones DB 95%.',
         recommendation: 'Acción inmediata requerida. Escalar recursos.'
       };
     } else if (serviceImpact === 'Alto') {
       capacity = { 
         alerts: 1, 
-        status: 'warning' as const, 
+        status: 'warning', 
         message: '1 Alerta Activa: Conexiones DB 85%.',
         recommendation: 'Monitorear de cerca. Considerar optimización.'
       };

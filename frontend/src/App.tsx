@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
-import { 
+import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine,
   PieChart, Pie, Cell, LineChart, Line
 } from 'recharts';
-import { 
-  topMetrics, 
-  slaDesempeno, 
+import {
+  topMetrics,
+  slaDesempeno,
   topOffenders,
   modalDisponibilidadGlobal
 } from './data';
@@ -14,6 +14,9 @@ import { AvailabilityModal } from './components/availability/AvailabilityModal';
 import { ServiceDetailModal } from './components/availability/ServiceDetailModal';
 import { UploadZone } from './components/UploadZone';
 import { parseIncidentsFrontend } from './services/incidentParser';
+import { IMPACT_LEVELS, getImpactLevel, getImpactOrder } from './config/impactLevels';
+import { useTableFilters } from './hooks/useTableFilters';
+import { TableFilterBar } from './components/shared/TableFilterBar';
 import './index.css';
 
 // Datos hardcodeados del prototipo original para las nuevas secciones
@@ -73,22 +76,40 @@ const resilienciaDetalle = [
 function App() {
   const [activeModal, setActiveModal] = useState<string | null>(null);
   const [selectedService, setSelectedService] = useState<any>(null);
-  
-  const { 
-    hasData, 
-    parsedExcelRawData, 
-    projectNames, 
-    activeProjectName, 
-    setActiveProjectName, 
+
+  const {
+    hasData,
+    parsedExcelRawData,
+    projectNames,
+    activeProjectName,
+    setActiveProjectName,
     resetData,
     availabilityData,
     isLoadingAvailability,
     fetchAvailabilityData
   } = useDataStore();
 
-  const dynamicData = parsedExcelRawData && parsedExcelRawData.length > 0 
-      ? parseIncidentsFrontend(parsedExcelRawData, activeProjectName || undefined) 
-      : null;
+  const dynamicData = parsedExcelRawData && parsedExcelRawData.length > 0
+    ? parseIncidentsFrontend(parsedExcelRawData, activeProjectName || undefined)
+    : null;
+
+  const incidents = React.useMemo(() => dynamicData?.incidents ?? [], [dynamicData]);
+
+  const filters = useTableFilters(incidents, [
+    {
+      key: 'impact',
+      getValue: (inc: any) => inc.impact,
+      sortOrder: (a, b) => getImpactOrder(a) - getImpactOrder(b)
+    },
+    {
+      key: 'service',
+      getValue: (inc: any) => inc.service,
+    },
+    {
+      key: 'source',
+      getValue: (inc: any) => inc.source,
+    }
+  ]);
 
   const handleServiceClick = (service: any) => {
     setSelectedService(service);
@@ -104,12 +125,12 @@ function App() {
     <div id="app">
       {/* Header Top - Navy Bar */}
       <div className="header-top">
-        <img src="/logo.png" alt="Logo" onClick={resetData} style={{cursor: 'pointer'}} />
+        {/* <img src="/logo.png" alt="Logo" onClick={resetData} style={{cursor: 'pointer'}} /> */}
         <h1>Informe del Servicio Febrero 2026</h1>
-        
+
         {hasData && (
           <div className="project-selector-container">
-            <select 
+            <select
               className="project-select"
               value={activeProjectName || ''}
               onChange={(e) => setActiveProjectName(e.target.value)}
@@ -120,8 +141,8 @@ function App() {
             </select>
             {/* Mostrar botón Re-sincronizar si el backend no tiene los datos de disponibilidad */}
             {!availabilityData && !isLoadingAvailability && (
-              <button 
-                className="upload-btn" 
+              <button
+                className="upload-btn"
                 onClick={() => activeProjectName && fetchAvailabilityData(activeProjectName)}
                 style={{ background: '#f59e0b', marginRight: '0.5rem' }}
                 title="El backend no tiene los datos. Recarga el archivo para restaurar disponibilidad."
@@ -153,16 +174,16 @@ function App() {
                 Disponibilidad Global
               </div>
               <div className="kpi-value" style={{
-                color: availabilityData?.global_availability.meets_target ? '#00DEBC' : '#f44336', 
-                textAlign: 'center', 
+                color: availabilityData?.global_availability.meets_target ? '#00DEBC' : '#f44336',
+                textAlign: 'center',
                 fontSize: '2.5rem'
               }}>
                 {availabilityData ? `${availabilityData.global_availability.percentage}%` : '--%'}
               </div>
-              <div className="kpi-meta" style={{textAlign: 'center'}}>
+              <div className="kpi-meta" style={{ textAlign: 'center' }}>
                 Meta: {availabilityData ? `${availabilityData.global_availability.meta}%` : '---'}
               </div>
-              <div className="kpi-meta" style={{textAlign: 'center'}}>Click para ver detalle</div>
+              <div className="kpi-meta" style={{ textAlign: 'center' }}>Click para ver detalle</div>
             </div>
 
             {/* Incidentes */}
@@ -171,21 +192,51 @@ function App() {
                 <span className="material-icons">error</span>
                 Incidentes
               </div>
-              <div style={{display: 'flex', gap: '1.5rem', justifyContent: 'center', marginTop: '0.5rem'}}>
-                <div className="incident-metric">
-                  <div style={{color: '#020B50', fontSize: '0.7rem', marginBottom: '0.25rem', textAlign: 'center'}}>Totales</div>
-                  <div style={{color: '#DC3535', fontSize: '1.8rem', fontWeight: '700', textAlign: 'center'}}>
-                    {dynamicData ? dynamicData.summary.total : topMetrics.incidentes.totales}
-                  </div>
-                </div>
-                <div className="incident-metric">
-                  <div style={{color: '#020B50', fontSize: '0.7rem', marginBottom: '0.25rem', textAlign: 'center'}}>Seti</div>
-                  <div style={{color: '#0050F6', fontSize: '1.8rem', fontWeight: '700', textAlign: 'center'}}>
-                    {topMetrics.incidentes.seti}
-                  </div>
-                </div>
+              
+              {(() => {
+                const incidents = dynamicData?.incidents ?? [];
+                
+                // Desglose por impacto - basado en IMPACT_LEVELS
+                const impactCounts = IMPACT_LEVELS.map(level => ({
+                  ...level,
+                  count: incidents.filter(i => i.impact === level.key).length
+                }));
+
+                // Color del total según severidad dominante (el primero con count > 0)
+                const dominant = impactCounts.find(l => l.count > 0);
+                const totalColor = dominant ? dominant.color : '#16A34A';
+
+                return (
+                  <>
+                    <div style={{ textAlign: 'center', margin: '0.25rem 0' }}>
+                      <div style={{ color: '#64748B', fontSize: '0.7rem', fontWeight: 600, textTransform: 'uppercase', marginBottom: '2px' }}>Totales</div>
+                      <div style={{ color: totalColor, fontSize: '2.5rem', fontWeight: '800', lineHeight: 1 }}>
+                        {incidents.length}
+                      </div>
+                    </div>
+                    
+                    <div style={{ 
+                      display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', 
+                      gap: '0.5rem', marginTop: '0.75rem', padding: '0 0.5rem' 
+                    }}>
+                      {impactCounts.map(level => (
+                        <div key={level.key} style={{ textAlign: 'center' }}>
+                          <div style={{ color: '#94A3B8', fontSize: '0.6rem', fontWeight: 700, textTransform: 'uppercase', marginBottom: '2px' }}>
+                            {level.key}s
+                          </div>
+                          <div style={{ color: level.count > 0 ? level.color : '#CBD5E1', fontSize: '1.1rem', fontWeight: '700' }}>
+                            {level.count}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                );
+              })()}
+              
+              <div className="kpi-meta" style={{ textAlign: 'center', marginTop: '0.75rem', fontSize: '0.7rem', borderTop: '1px solid #F1F5F9', paddingTop: '0.5rem' }}>
+                Click para ver detalle
               </div>
-              <div className="kpi-meta" style={{textAlign: 'center', marginTop: '0.5rem'}}>Click para ver detalle</div>
             </div>
 
             {/* Tiempos de Respuesta */}
@@ -194,21 +245,21 @@ function App() {
                 <span className="material-icons">schedule</span>
                 Tiempos de Respuesta
               </div>
-              <div style={{display: 'flex', gap: '1.5rem', justifyContent: 'center', marginTop: '0.5rem'}}>
+              <div style={{ display: 'flex', gap: '1.5rem', justifyContent: 'center', marginTop: '0.5rem' }}>
                 <div>
-                  <div style={{color: '#020B50', fontSize: '0.7rem', marginBottom: '0.25rem'}}>MTTR</div>
-                  <div style={{color: '#00896E', fontSize: '1.8rem', fontWeight: '700'}}>
+                  <div style={{ color: '#020B50', fontSize: '0.7rem', marginBottom: '0.25rem' }}>MTTR</div>
+                  <div style={{ color: '#00896E', fontSize: '1.8rem', fontWeight: '700' }}>
                     {dynamicData ? dynamicData.summary.avg_recovery_formatted : topMetrics.tiempos.mttr}
                   </div>
                 </div>
                 <div>
-                  <div style={{color: '#020B50', fontSize: '0.7rem', marginBottom: '0.25rem'}}>MTBF</div>
-                  <div style={{color: '#0050F6', fontSize: '1.8rem', fontWeight: '700'}}>
+                  <div style={{ color: '#020B50', fontSize: '0.7rem', marginBottom: '0.25rem' }}>MTBF</div>
+                  <div style={{ color: '#0050F6', fontSize: '1.8rem', fontWeight: '700' }}>
                     {dynamicData ? dynamicData.summary.mtbf_formatted : topMetrics.tiempos.mtbf}
                   </div>
                 </div>
               </div>
-              <div className="kpi-meta" style={{textAlign: 'center', marginTop: '0.5rem'}}>Mean Time To Repair / Between Failures</div>
+              <div className="kpi-meta" style={{ textAlign: 'center', marginTop: '0.5rem' }}>Mean Time To Repair / Between Failures</div>
             </div>
 
             {/* Vulnerabilidades */}
@@ -217,10 +268,10 @@ function App() {
                 <span className="material-icons">security</span>
                 Cumplimiento de Vulnerabilidades
               </div>
-              <div className="kpi-value" style={{color: '#00DEBC', textAlign: 'center', fontSize: '2.5rem'}}>
+              <div className="kpi-value" style={{ color: '#00DEBC', textAlign: 'center', fontSize: '2.5rem' }}>
                 100%
               </div>
-              <div className="kpi-meta" style={{textAlign: 'center'}}>7.743/33.295 vulnerabilidades resueltas</div>
+              <div className="kpi-meta" style={{ textAlign: 'center' }}>7.743/33.295 vulnerabilidades resueltas</div>
             </div>
 
             {/* Compromisos */}
@@ -229,10 +280,10 @@ function App() {
                 <span className="material-icons">assignment_turned_in</span>
                 Cumplimiento de Compromisos
               </div>
-              <div className="kpi-value" style={{color: '#01ADEF', textAlign: 'center', fontSize: '2.5rem'}}>
+              <div className="kpi-value" style={{ color: '#01ADEF', textAlign: 'center', fontSize: '2.5rem' }}>
                 95%
               </div>
-              <div className="kpi-meta" style={{textAlign: 'center'}}>Click para ver detalle</div>
+              <div className="kpi-meta" style={{ textAlign: 'center' }}>Click para ver detalle</div>
             </div>
           </div>
         )}
@@ -263,15 +314,15 @@ function App() {
                   <tbody>
                     {isLoadingAvailability ? (
                       <tr>
-                        <td colSpan={5} style={{textAlign: 'center', padding: '2rem', color: 'var(--text-muted)'}}>
-                          <span className="material-icons" style={{fontSize: '1.5rem', display: 'block', marginBottom: '0.5rem', opacity: 0.5}}>sync</span>
+                        <td colSpan={5} style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
+                          <span className="material-icons" style={{ fontSize: '1.5rem', display: 'block', marginBottom: '0.5rem', opacity: 0.5 }}>sync</span>
                           Cargando datos de disponibilidad...
                         </td>
                       </tr>
                     ) : !availabilityData?.services?.length ? (
                       <tr>
-                        <td colSpan={5} style={{textAlign: 'center', padding: '2rem', color: 'var(--text-muted)'}}>
-                          <span className="material-icons" style={{fontSize: '1.5rem', display: 'block', marginBottom: '0.5rem', opacity: 0.5}}>cloud_off</span>
+                        <td colSpan={5} style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
+                          <span className="material-icons" style={{ fontSize: '1.5rem', display: 'block', marginBottom: '0.5rem', opacity: 0.5 }}>cloud_off</span>
                           No hay datos de disponibilidad del backend. Verifica que el servidor esté activo.
                         </td>
                       </tr>
@@ -294,30 +345,30 @@ function App() {
                           <tr key={index} onClick={() => handleServiceClick(s)}>
                             <td className="service-name-cell">{s.name}</td>
                             <td>
-                              <span className="service-metric" style={{color}}>
-                                <span className="material-icons" style={{fontSize: '16px'}}>check_circle</span>
+                              <span className="service-metric" style={{ color }}>
+                                <span className="material-icons" style={{ fontSize: '16px' }}>check_circle</span>
                                 {avail.toFixed(2)}%
                               </span>
                             </td>
-                            <td style={{textAlign: 'center'}}>
-                              <span className="service-metric" style={{color: s.incident_count > 0 ? '#f44336' : 'inherit'}}>
-                                <span className="material-icons" style={{fontSize: '16px'}}>report_problem</span>
+                            <td style={{ textAlign: 'center' }}>
+                              <span className="service-metric" style={{ color: s.incident_count > 0 ? '#f44336' : 'inherit' }}>
+                                <span className="material-icons" style={{ fontSize: '16px' }}>report_problem</span>
                                 {s.incident_count}
                               </span>
                             </td>
                             <td>
                               <div className="deployment-info">
-                                <span style={{fontSize: '0.8rem', fontWeight: 600}}>
+                                <span style={{ fontSize: '0.8rem', fontWeight: 600 }}>
                                   {deploymentsText} ({deploymentsRate})
                                 </span>
                                 <div className="deployment-bar">
-                                  <div className="deployment-fill" style={{width: deploymentsRate}}></div>
+                                  <div className="deployment-fill" style={{ width: deploymentsRate }}></div>
                                 </div>
                               </div>
                             </td>
-                            <td style={{textAlign: 'center'}}>
-                              <span className="capacity-badge" style={{background: `${capacityColor}20`, color: capacityColor}}>
-                                <span className="material-icons" style={{fontSize: '14px', verticalAlign: 'middle', marginRight: '4px'}}>
+                            <td style={{ textAlign: 'center' }}>
+                              <span className="capacity-badge" style={{ background: `${capacityColor}20`, color: capacityColor }}>
+                                <span className="material-icons" style={{ fontSize: '14px', verticalAlign: 'middle', marginRight: '4px' }}>
                                   {capacityIcon}
                                 </span>
                                 {capacityCount}
@@ -339,42 +390,42 @@ function App() {
                 <span className="material-icons card-icon">notifications_active</span>
                 <h2 className="card-title">Gestión de Eventos</h2>
               </div>
-              <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem', marginTop: '1rem'}}>
-                <div style={{display: 'flex', flexDirection: 'column', alignItems: 'center'}}>
-                  <h4 style={{color: '#2D3142', fontSize: '0.75rem', marginBottom: '1rem', textTransform: 'uppercase', alignSelf: 'flex-start'}}>TOP 5 Eventos por Servicio</h4>
-                  <div style={{display: 'flex', gap: '2rem', alignItems: 'center', width: '100%'}}>
-                    <div style={{width: '100px', height: '100px', background: 'conic-gradient(#0050F6 0% 30%, #00DEBC 30% 55%, #01ADEF 55% 75%, #5B8DEF 75% 90%, #00B89C 90% 100%)', borderRadius: '50%'}}></div>
-                    <div style={{flex: 1}}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem', marginTop: '1rem' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                  <h4 style={{ color: '#2D3142', fontSize: '0.75rem', marginBottom: '1rem', textTransform: 'uppercase', alignSelf: 'flex-start' }}>TOP 5 Eventos por Servicio</h4>
+                  <div style={{ display: 'flex', gap: '2rem', alignItems: 'center', width: '100%' }}>
+                    <div style={{ width: '100px', height: '100px', background: 'conic-gradient(#0050F6 0% 30%, #00DEBC 30% 55%, #01ADEF 55% 75%, #5B8DEF 75% 90%, #00B89C 90% 100%)', borderRadius: '50%' }}></div>
+                    <div style={{ flex: 1 }}>
                       {eventData.alertas_por_servicio.map((item, idx) => (
-                        <div key={idx} style={{display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.4rem', fontSize: '0.7rem'}}>
-                          <div style={{width: '8px', height: '8px', background: ['#0050F6', '#00DEBC', '#01ADEF', '#5B8DEF', '#00B89C'][idx], borderRadius: '2px'}}></div>
-                          <span style={{color: '#2D3142', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '120px'}}>{item.servicio.split('|')[0]}</span>
-                          <span style={{color: '#4A4E5A', marginLeft: 'auto'}}>{item.alertas}</span>
+                        <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.4rem', fontSize: '0.7rem' }}>
+                          <div style={{ width: '8px', height: '8px', background: ['#0050F6', '#00DEBC', '#01ADEF', '#5B8DEF', '#00B89C'][idx], borderRadius: '2px' }}></div>
+                          <span style={{ color: '#2D3142', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '120px' }}>{item.servicio.split('|')[0]}</span>
+                          <span style={{ color: '#4A4E5A', marginLeft: 'auto' }}>{item.alertas}</span>
                         </div>
                       ))}
                     </div>
                   </div>
                 </div>
-                
-                <div style={{display: 'flex', flexDirection: 'column'}}>
-                  <h4 style={{color: '#2D3142', fontSize: '0.75rem', marginBottom: '1rem', textTransform: 'uppercase'}}>Top 5 Eventos</h4>
+
+                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                  <h4 style={{ color: '#2D3142', fontSize: '0.75rem', marginBottom: '1rem', textTransform: 'uppercase' }}>Top 5 Eventos</h4>
                   {eventData.top_eventos.map((e, idx) => (
-                    <div key={idx} style={{marginBottom: '0.8rem'}}>
-                      <div style={{display: 'flex', justifyContent: 'space-between', marginBottom: '0.25rem'}}>
-                        <span style={{color: '#2D3142', fontSize: '0.7rem'}}>{e.evento}</span>
-                        <span style={{color: '#020B50', fontSize: '0.7rem', fontWeight: 600}}>{e.cantidad}</span>
+                    <div key={idx} style={{ marginBottom: '0.8rem' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.25rem' }}>
+                        <span style={{ color: '#2D3142', fontSize: '0.7rem' }}>{e.evento}</span>
+                        <span style={{ color: '#020B50', fontSize: '0.7rem', fontWeight: 600 }}>{e.cantidad}</span>
                       </div>
-                      <div style={{width: '100%', height: '6px', background: '#E8EAF0', borderRadius: '3px', overflow: 'hidden'}}>
-                        <div style={{width: `${(e.cantidad / 2376) * 100}%`, height: '100%', background: ['#0050F6', '#00DEBC', '#01ADEF', '#5B8DEF', '#00B89C'][idx], borderRadius: '3px'}}></div>
+                      <div style={{ width: '100%', height: '6px', background: '#E8EAF0', borderRadius: '3px', overflow: 'hidden' }}>
+                        <div style={{ width: `${(e.cantidad / 2376) * 100}%`, height: '100%', background: ['#0050F6', '#00DEBC', '#01ADEF', '#5B8DEF', '#00B89C'][idx], borderRadius: '3px' }}></div>
                       </div>
                     </div>
                   ))}
                 </div>
               </div>
-              <div style={{marginTop: '1.5rem', paddingTop: '1rem', borderTop: '1px solid #E2E4E8', textAlign: 'center'}}>
-                <div style={{color: '#4A4E5A', fontSize: '0.75rem', marginBottom: '0.25rem'}}>Total Alertas Gestionadas</div>
-                <div style={{color: '#020B50', fontSize: '1.8rem', fontWeight: 700}}>13,643</div>
-                <div style={{color: '#4A4E5A', fontSize: '0.7rem', marginTop: '0.5rem'}}>Click para ver detalle</div>
+              <div style={{ marginTop: '1.5rem', paddingTop: '1rem', borderTop: '1px solid #E2E4E8', textAlign: 'center' }}>
+                <div style={{ color: '#4A4E5A', fontSize: '0.75rem', marginBottom: '0.25rem' }}>Total Alertas Gestionadas</div>
+                <div style={{ color: '#020B50', fontSize: '1.8rem', fontWeight: 700 }}>13,643</div>
+                <div style={{ color: '#4A4E5A', fontSize: '0.7rem', marginTop: '0.5rem' }}>Click para ver detalle</div>
               </div>
             </div>
           </div>
@@ -387,18 +438,18 @@ function App() {
                 <span className="material-icons card-icon">trending_up</span>
                 <h2 className="card-title">Desempeño (SLA)</h2>
               </div>
-              <div style={{height: '180px', width: '100%'}}>
+              <div style={{ height: '180px', width: '100%' }}>
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={slaDesempeno} margin={{ top: 20, right: 10, left: -20, bottom: 5 }}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                    <XAxis dataKey="name" tick={{fontSize: 10}} />
+                    <XAxis dataKey="name" tick={{ fontSize: 10 }} />
                     <YAxis hide />
-                    <Tooltip cursor={{fill: 'rgba(0, 80, 246, 0.04)'}} />
+                    <Tooltip cursor={{ fill: 'rgba(0, 80, 246, 0.04)' }} />
                     <Bar dataKey="value" fill="var(--blue)" radius={[4, 4, 0, 0]} label={{ position: 'top', fontSize: 10, formatter: (v: any) => `${v}%` }} />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
-              <div style={{textAlign: 'center', color: '#4A4E5A', fontSize: '0.7rem', marginTop: '0.5rem'}}>Click para ver análisis de brechas</div>
+              <div style={{ textAlign: 'center', color: '#4A4E5A', fontSize: '0.7rem', marginTop: '0.5rem' }}>Click para ver análisis de brechas</div>
             </div>
 
             {/* Resiliencia */}
@@ -408,18 +459,18 @@ function App() {
                 <h2 className="card-title">Resiliencia</h2>
               </div>
               <div className="font-bold text-sm mb-4">Top Offenders</div>
-              <div style={{display: 'flex', flexDirection: 'column', gap: '0.8rem'}}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.8rem' }}>
                 {(dynamicData?.resilience.top_offenders || topOffenders).map((item: any, idx: number) => (
-                  <div key={idx} style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.8rem', borderBottom: '1px solid #f0f0f0', paddingBottom: '0.5rem'}}>
+                  <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.8rem', borderBottom: '1px solid #f0f0f0', paddingBottom: '0.5rem' }}>
                     <div>
-                      <div style={{fontWeight: 700, color: 'var(--navy)'}}>{item.sistema || (item as any).name}</div>
-                      <div style={{fontSize: '0.7rem', color: 'var(--text-muted)'}}>Recurrencia: {item.recurrencia}%</div>
+                      <div style={{ fontWeight: 700, color: 'var(--navy)' }}>{item.sistema || (item as any).name}</div>
+                      <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Recurrencia: {item.recurrencia}%</div>
                     </div>
-                    <div style={{color: '#f44336', fontWeight: 700}}>{item.fallas} fallas</div>
+                    <div style={{ color: '#f44336', fontWeight: 700 }}>{item.fallas} fallas</div>
                   </div>
                 ))}
               </div>
-              <div style={{textAlign: 'center', color: '#4A4E5A', fontSize: '0.7rem', marginTop: '0.5rem'}}>Click para ver análisis RCA</div>
+              <div style={{ textAlign: 'center', color: '#4A4E5A', fontSize: '0.7rem', marginTop: '0.5rem' }}>Click para ver análisis RCA</div>
             </div>
 
             {/* Eficiencia Operativa */}
@@ -428,21 +479,21 @@ function App() {
                 <span className="material-icons card-icon">psychology</span>
                 <h2 className="card-title">Eficiencia Operativa</h2>
               </div>
-              <div style={{display: 'flex', flexDirection: 'column', gap: '2rem', marginTop: '1rem'}}>
-                <div style={{textAlign: 'center'}}>
-                  <div style={{color: '#4A4E5A', fontSize: '0.85rem', marginBottom: '0.5rem'}}>Automatización Total</div>
-                  <div style={{color: '#00DEBC', fontSize: '3rem', fontWeight: 700}}>{eficienciaData.porcentaje_automatizacion}%</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem', marginTop: '1rem' }}>
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ color: '#4A4E5A', fontSize: '0.85rem', marginBottom: '0.5rem' }}>Automatización Total</div>
+                  <div style={{ color: '#00DEBC', fontSize: '3rem', fontWeight: 700 }}>{eficienciaData.porcentaje_automatizacion}%</div>
                 </div>
-                <div style={{borderTop: '1px solid #E2E4E8', paddingTop: '1.5rem'}}>
-                  <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem'}}>
-                    <span style={{color: '#4A4E5A', fontSize: '0.85rem'}}>Avance del Mes</span>
-                    <span style={{color: '#020B50', fontWeight: 600}}>+{eficienciaData.avance_mes}%</span>
+                <div style={{ borderTop: '1px solid #E2E4E8', paddingTop: '1.5rem' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                    <span style={{ color: '#4A4E5A', fontSize: '0.85rem' }}>Avance del Mes</span>
+                    <span style={{ color: '#020B50', fontWeight: 600 }}>+{eficienciaData.avance_mes}%</span>
                   </div>
-                  <div className="deployment-bar" style={{width: '100%', height: '10px'}}>
-                    <div className="deployment-fill" style={{width: `${(eficienciaData.avance_mes / 20) * 100}%`}}></div>
+                  <div className="deployment-bar" style={{ width: '100%', height: '10px' }}>
+                    <div className="deployment-fill" style={{ width: `${(eficienciaData.avance_mes / 20) * 100}%` }}></div>
                   </div>
                 </div>
-                <div style={{textAlign: 'center', color: '#4A4E5A', fontSize: '0.75rem'}}>
+                <div style={{ textAlign: 'center', color: '#4A4E5A', fontSize: '0.75rem' }}>
                   Click para ver detalle
                 </div>
               </div>
@@ -453,13 +504,13 @@ function App() {
 
       {/* Footer */}
       <footer className="footer">
-        <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
-          <div style={{fontSize: '0.8rem', color: 'var(--text-muted)'}}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
             © 2026 gou Payments - Dashboard de Control Operativo
           </div>
-          <div style={{display: 'flex', gap: '1.5rem'}}>
-            <span className="material-icons" style={{color: 'var(--gray)', cursor: 'pointer'}}>info</span>
-            <span className="material-icons" style={{color: 'var(--gray)', cursor: 'pointer'}}>settings</span>
+          <div style={{ display: 'flex', gap: '1.5rem' }}>
+            <span className="material-icons" style={{ color: 'var(--gray)', cursor: 'pointer' }}>info</span>
+            <span className="material-icons" style={{ color: 'var(--gray)', cursor: 'pointer' }}>settings</span>
           </div>
         </div>
       </footer>
@@ -469,126 +520,165 @@ function App() {
       {/* Incident Modal */}
       {activeModal === 'incidentes' && (
         <div className="modal-overlay" onClick={closeModal}>
-          <div className="modal-content" onClick={e => e.stopPropagation()} style={{maxWidth: '1000px'}}>
+          <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '1000px' }}>
             <button className="modal-close-btn" onClick={closeModal}>×</button>
             <div className="modal-header">
               <h2 className="modal-title">Detalle de Incidentes del Mes</h2>
             </div>
 
             {dynamicData && (
-              <>
-                <div className="detail-section">
-                  <h3><span className="material-icons">analytics</span> Resumen</h3>
-                  <div style={{display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1.5rem'}}>
-                    <div style={{background: '#F4F5F7', padding: '1.5rem', borderRadius: '12px', textAlign: 'center'}}>
-                      <div style={{fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.5rem', textTransform: 'uppercase'}}>Total Incidentes</div>
-                      <div style={{fontSize: '2rem', fontWeight: 700, color: dynamicData.summary.total > 0 ? '#f44336' : '#00DEBC'}}>
-                        {dynamicData.summary.total}
-                      </div>
-                    </div>
-                    <div style={{background: '#F4F5F7', padding: '1.5rem', borderRadius: '12px', textAlign: 'center'}}>
-                      <div style={{fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.5rem', textTransform: 'uppercase'}}>MTTR Promedio</div>
-                      <div style={{fontSize: '2rem', fontWeight: 700, color: 'var(--navy)'}}>
-                        {dynamicData.summary.avg_recovery_formatted}
-                      </div>
-                    </div>
-                    <div style={{background: '#F4F5F7', padding: '1.5rem', borderRadius: '12px', textAlign: 'center'}}>
-                      <div style={{fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.5rem', textTransform: 'uppercase'}}>Servicios Afectados</div>
-                      <div style={{fontSize: '2rem', fontWeight: 700, color: 'var(--navy)'}}>
-                        {dynamicData.summary.services_affected}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="detail-section">
-                  <h3><span className="material-icons">pie_chart</span> Distribución por Fuente de Falla</h3>
-                  <div style={{display: 'flex', alignItems: 'center', gap: '3rem', background: '#F8F9FB', padding: '2rem', borderRadius: '12px'}}>
-                    <div style={{width: '200px', height: '200px'}}>
-                      <ResponsiveContainer width="100%" height="100%">
-                        <PieChart>
-                          <Pie data={dynamicData.by_source} innerRadius={60} outerRadius={80} paddingAngle={5} dataKey="value">
-                            {dynamicData.by_source.map((entry, index) => <Cell key={`cell-${index}`} fill={entry.color} />)}
-                          </Pie>
-                          <Tooltip />
-                        </PieChart>
-                      </ResponsiveContainer>
-                    </div>
-                    <div style={{display: 'flex', flexDirection: 'column', gap: '0.75rem'}}>
-                      {dynamicData.by_source.map((entry: any, idx: number) => (
-                        <div key={idx} style={{display: 'flex', alignItems: 'center', gap: '0.75rem', fontSize: '0.9rem'}}>
-                          <div style={{width: 14, height: 14, background: entry.color, borderRadius: 3}}></div>
-                          <span style={{fontWeight: 600, color: 'var(--navy)', minWidth: '120px'}}>{entry.name}</span>
-                          <span style={{color: 'var(--text-muted)'}}>{entry.count} incidentes ({entry.percentage}%)</span>
+                  <>
+                    <div className="detail-section">
+                      <h3><span className="material-icons">analytics</span> Resumen</h3>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1.5rem' }}>
+                        <div style={{ background: '#F4F5F7', padding: '1.5rem', borderRadius: '12px', textAlign: 'center' }}>
+                          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.5rem', textTransform: 'uppercase' }}>Total Incidentes</div>
+                          <div style={{ fontSize: '2rem', fontWeight: 700, color: dynamicData.summary.total > 0 ? '#f44336' : '#00DEBC' }}>
+                            {dynamicData.summary.total}
+                          </div>
                         </div>
-                      ))}
+                        <div style={{ background: '#F4F5F7', padding: '1.5rem', borderRadius: '12px', textAlign: 'center' }}>
+                          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.5rem', textTransform: 'uppercase' }}>MTTR Promedio</div>
+                          <div style={{ fontSize: '2rem', fontWeight: 700, color: 'var(--navy)' }}>
+                            {dynamicData.summary.avg_recovery_formatted}
+                          </div>
+                        </div>
+                        <div style={{ background: '#F4F5F7', padding: '1.5rem', borderRadius: '12px', textAlign: 'center' }}>
+                          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.5rem', textTransform: 'uppercase' }}>Servicios Afectados</div>
+                          <div style={{ fontSize: '2rem', fontWeight: 700, color: 'var(--navy)' }}>
+                            {dynamicData.summary.services_affected}
+                          </div>
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                </div>
 
-                <div className="detail-section">
-                  <h3><span className="material-icons">list</span> Detalle de Incidentes</h3>
-                  <div className="services-table-container">
-                    <table className="services-table" style={{fontSize: '0.85rem'}}>
-                      <thead>
-                        <tr>
-                          <th>Servicio</th>
-                          <th>Descripción</th>
-                          <th>Tiempo de Recuperación</th>
-                          <th>Fuente / Fecha</th>
-                          <th>Impacto</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {dynamicData.incidents.map((row, idx) => (
-                          <tr key={idx}>
-                            <td style={{fontWeight: 700, color: 'var(--navy)'}}>{row.service}</td>
-                            <td>{row.description}</td>
-                            <td style={{fontWeight: 700, color: row.impact === 'Crítico' ? '#DC2626' : row.impact === 'Alto' ? '#EA580C' : '#16A34A'}}>
-                              {row.recovery_formatted}
-                            </td>
-                            <td>
-                              <div style={{fontWeight: 600}}>{row.source}</div>
-                              <div style={{fontSize: '0.75rem', color: 'var(--text-muted)'}}>{row.date}</div>
-                            </td>
-                            <td>
-                              <span className="capacity-badge" style={{
-                                background: row.impact === 'Crítico' ? '#FEE2E2' : row.impact === 'Alto' ? '#FFF7ED' : '#F0FDF4',
-                                color: row.impact === 'Crítico' ? '#DC2626' : row.impact === 'Alto' ? '#EA580C' : '#16A34A',
-                                border: `1px solid ${row.impact === 'Crítico' ? '#FCA5A5' : row.impact === 'Alto' ? '#FED7AA' : '#BBF7D0'}`
-                              }}>
-                                {row.impact}
-                              </span>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
+                    <div className="detail-section">
+                      <h3><span className="material-icons">pie_chart</span> Distribución por Fuente de Falla</h3>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '3rem', background: '#F8F9FB', padding: '2rem', borderRadius: '12px' }}>
+                        <div style={{ width: '200px', height: '200px' }}>
+                          <ResponsiveContainer width="100%" height="100%">
+                            <PieChart>
+                              <Pie data={dynamicData.by_source} innerRadius={60} outerRadius={80} paddingAngle={5} dataKey="value">
+                                {dynamicData.by_source.map((entry, index) => <Cell key={`cell-${index}`} fill={entry.color} />)}
+                              </Pie>
+                              <Tooltip />
+                            </PieChart>
+                          </ResponsiveContainer>
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                          {dynamicData.by_source.map((entry: any, idx: number) => (
+                            <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', fontSize: '0.9rem' }}>
+                              <div style={{ width: 14, height: 14, background: entry.color, borderRadius: 3 }}></div>
+                              <span style={{ fontWeight: 600, color: 'var(--navy)', minWidth: '120px' }}>{entry.name}</span>
+                              <span style={{ color: 'var(--text-muted)' }}>{entry.count} incidentes ({entry.percentage}%)</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
 
-                <div className="detail-section">
-                  <h3><span className="material-icons">psychology</span> Análisis y Recomendaciones</h3>
-                  <div style={{
-                    borderLeft: `5px solid ${dynamicData.analysis.action_required ? '#EA580C' : '#16A34A'}`,
-                    background: dynamicData.analysis.action_required ? '#FFF7ED' : '#F0FDF4',
-                    padding: '1.5rem',
-                    borderRadius: '8px'
-                  }}>
-                    <div style={{display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.5rem'}}>
-                      <span className="material-icons" style={{color: dynamicData.analysis.action_required ? '#EA580C' : '#16A34A'}}>
-                        {dynamicData.analysis.action_required ? 'warning' : 'check_circle'}
-                      </span>
-                      <span style={{fontWeight: 700, color: dynamicData.analysis.action_required ? '#EA580C' : '#16A34A'}}>
-                        {dynamicData.analysis.action_required ? "Acciones Requeridas" : "Estado Estable"}
-                      </span>
+                    <div className="detail-section">
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                        <h3><span className="material-icons">list</span> Detalle de Incidentes</h3>
+                      </div>
+
+                      <TableFilterBar
+                        filterDefs={[
+                          {
+                            key: 'impact',
+                            label: 'Impacto',
+                            getColor: (value) => getImpactLevel(value).bgColorActive
+                          },
+                          { key: 'service', label: 'Servicio', maxPills: 5 },
+                          { key: 'source',  label: 'Fuente',   maxPills: 5 }
+                        ]}
+                        filterState={filters.filterState}
+                        availableOptions={filters.availableOptions}
+                        onToggle={filters.toggleFilter}
+                        onClear={filters.clearFilters}
+                        hasActiveFilters={filters.hasActiveFilters}
+                        resultCount={filters.resultCount}
+                        totalCount={filters.totalCount}
+                      />
+
+                      <div className="services-table-container">
+                        <table className="services-table" style={{ fontSize: '0.85rem' }}>
+                          <thead>
+                            <tr>
+                              <th>Servicio</th>
+                              <th>Descripción</th>
+                              <th>Tiempo de Recuperación</th>
+                              <th>Fuente / Fecha</th>
+                              <th>Impacto</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {filters.filteredData.length === 0 ? (
+                              <tr>
+                                <td colSpan={5} style={{ textAlign: 'center', padding: '3rem', color: '#64748B' }}>
+                                  <span className="material-icons" style={{ fontSize: '2rem', display: 'block', marginBottom: '0.5rem', opacity: 0.5 }}>search_off</span>
+                                  No hay incidentes que coincidan con los filtros seleccionados
+                                  <div style={{ marginTop: '1rem' }}>
+                                    <button 
+                                      onClick={filters.clearFilters}
+                                      style={{ padding: '6px 16px', borderRadius: '8px', border: '1px solid #CBD5E1', background: 'white', cursor: 'pointer', fontSize: '0.8rem' }}
+                                    >
+                                      Limpiar filtros
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            ) : (
+                              filters.filteredData.map((row, idx) => (
+                                <tr key={idx}>
+                                  <td style={{ fontWeight: 700, color: 'var(--navy)' }}>{row.service}</td>
+                                  <td>{row.description}</td>
+                                  <td style={{ fontWeight: 700, color: row.impact === 'Crítico' ? '#DC2626' : row.impact === 'Alto' ? '#EA580C' : '#16A34A' }}>
+                                    {row.recovery_formatted}
+                                  </td>
+                                  <td>
+                                    <div style={{ fontWeight: 600 }}>{row.source}</div>
+                                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{row.date}</div>
+                                  </td>
+                                  <td>
+                                    <span className="capacity-badge" style={{
+                                      background: row.impact === 'Crítico' ? '#FEE2E2' : row.impact === 'Alto' ? '#FFF7ED' : '#F0FDF4',
+                                      color: row.impact === 'Crítico' ? '#DC2626' : row.impact === 'Alto' ? '#EA580C' : '#16A34A',
+                                      border: `1px solid ${row.impact === 'Crítico' ? '#FCA5A5' : row.impact === 'Alto' ? '#FED7AA' : '#BBF7D0'}`
+                                    }}>
+                                      {row.impact}
+                                    </span>
+                                  </td>
+                                </tr>
+                              ))
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
                     </div>
-                    <div style={{fontSize: '0.95rem', color: 'var(--text-secondary)', lineHeight: 1.6}}>
-                      {dynamicData.analysis.message}
+
+                    <div className="detail-section">
+                      <h3><span className="material-icons">psychology</span> Análisis y Recomendaciones</h3>
+                      <div style={{
+                        borderLeft: `5px solid ${dynamicData.analysis.action_required ? '#EA580C' : '#16A34A'}`,
+                        background: dynamicData.analysis.action_required ? '#FFF7ED' : '#F0FDF4',
+                        padding: '1.5rem',
+                        borderRadius: '8px'
+                      }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.5rem' }}>
+                          <span className="material-icons" style={{ color: dynamicData.analysis.action_required ? '#EA580C' : '#16A34A' }}>
+                            {dynamicData.analysis.action_required ? 'warning' : 'check_circle'}
+                          </span>
+                          <span style={{ fontWeight: 700, color: dynamicData.analysis.action_required ? '#EA580C' : '#16A34A' }}>
+                            {dynamicData.analysis.action_required ? "Acciones Requeridas" : "Estado Estable"}
+                          </span>
+                        </div>
+                        <div style={{ fontSize: '0.95rem', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+                          {dynamicData.analysis.message}
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                </div>
-              </>
+                  </>
             )}
           </div>
         </div>
@@ -597,7 +687,7 @@ function App() {
       {/* SLA Modal */}
       {activeModal === 'sla' && (
         <div className="modal-overlay" onClick={closeModal}>
-          <div className="modal-content" onClick={e => e.stopPropagation()} style={{maxWidth: '1000px'}}>
+          <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '1000px' }}>
             <button className="modal-close-btn" onClick={closeModal}>×</button>
             <div className="modal-header">
               <h2 className="modal-title">Análisis de Desempeño SLA</h2>
@@ -605,7 +695,7 @@ function App() {
             <div className="detail-section">
               <h3>Comparativa Mensual</h3>
               <div className="services-table-container">
-                <table className="services-table" style={{fontSize: '0.8rem'}}>
+                <table className="services-table" style={{ fontSize: '0.8rem' }}>
                   <thead>
                     <tr>
                       <th>Métrica</th>
@@ -620,9 +710,9 @@ function App() {
                       <tr key={idx}>
                         <td>{row.metrica}</td>
                         <td>{row.anterior}</td>
-                        <td style={{fontWeight: 700}}>{row.actual}</td>
+                        <td style={{ fontWeight: 700 }}>{row.actual}</td>
                         <td>{row.objetivo}</td>
-                        <td style={{color: row.color, fontWeight: 700}}>{row.variacion}</td>
+                        <td style={{ color: row.color, fontWeight: 700 }}>{row.variacion}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -631,7 +721,7 @@ function App() {
             </div>
             <div className="detail-section">
               <h3>Análisis de Brechas</h3>
-              <p style={{color: '#2D3142', lineHeight: 1.6, background: '#F8F9FB', padding: '1.5rem', borderRadius: '8px', borderLeft: '4px solid var(--blue)'}}>
+              <p style={{ color: '#2D3142', lineHeight: 1.6, background: '#F8F9FB', padding: '1.5rem', borderRadius: '8px', borderLeft: '4px solid var(--blue)' }}>
                 El cumplimiento actual se encuentra 0,85% por debajo del objetivo contractual.
                 Las principales causas identificadas son: vencimiento del plazo para una solicitud (RF), entrega oportunda de cinco informes preliminares de incidentes, uno definitivo y un entregable.
                 El resultado de la medición de hardening corresponde a una propuesta hecha desde SETI.
@@ -644,7 +734,7 @@ function App() {
       {/* Resiliencia Modal */}
       {activeModal === 'resiliencia' && (
         <div className="modal-overlay" onClick={closeModal}>
-          <div className="modal-content" onClick={e => e.stopPropagation()} style={{maxWidth: '900px'}}>
+          <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '900px' }}>
             <button className="modal-close-btn" onClick={closeModal}>×</button>
             <div className="modal-header">
               <h2 className="modal-title">Análisis de Resiliencia</h2>
@@ -652,7 +742,7 @@ function App() {
             <div className="detail-section">
               <h3>Top Offenders - Detalle</h3>
               <div className="services-table-container">
-                <table className="services-table" style={{fontSize: '0.85rem'}}>
+                <table className="services-table" style={{ fontSize: '0.85rem' }}>
                   <thead>
                     <tr>
                       <th>Sistema</th>
@@ -665,13 +755,13 @@ function App() {
                   <tbody>
                     {(dynamicData?.resilience.top_offenders || resilienciaDetalle).map((o: any, idx: number) => (
                       <tr key={idx}>
-                        <td style={{fontWeight: 700}}>{o.sistema}</td>
+                        <td style={{ fontWeight: 700 }}>{o.sistema}</td>
                         <td>{o.fallas}</td>
                         <td>{o.recurrencia}%</td>
                         <td>{o.causa}</td>
                         <td>
                           <span className="capacity-badge" style={{
-                            background: 'rgba(0, 80, 246, 0.05)', 
+                            background: 'rgba(0, 80, 246, 0.05)',
                             color: 'var(--blue)',
                             fontWeight: 700,
                             fontSize: '0.7rem'
@@ -687,27 +777,27 @@ function App() {
             </div>
             <div className="detail-section">
               <h3>Análisis RCA (Root Cause Analysis)</h3>
-              <div style={{display: 'flex', flexDirection: 'column', gap: '1rem'}}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                 {(dynamicData?.resilience.top_offenders || []).slice(0, 3).map((o, idx) => (
                   <div key={idx} style={{
-                    background: idx === 0 ? '#FFF5F5' : '#F0F9FF', 
-                    padding: '1.5rem', 
-                    borderRadius: '8px', 
+                    background: idx === 0 ? '#FFF5F5' : '#F0F9FF',
+                    padding: '1.5rem',
+                    borderRadius: '8px',
                     borderLeft: `4px solid ${idx === 0 ? '#f44336' : 'var(--blue)'}`
                   }}>
-                    <strong style={{color: idx === 0 ? '#8b0000' : 'var(--navy)', display: 'block', marginBottom: '0.5rem'}}>
+                    <strong style={{ color: idx === 0 ? '#8b0000' : 'var(--navy)', display: 'block', marginBottom: '0.5rem' }}>
                       {o.sistema}: {o.description}
                     </strong>
-                    <div style={{fontSize: '0.9rem', color: 'var(--text-secondary)'}}>
-                      <strong>Solución Aplicada:</strong> {o.accion === "OPTIMIZACIÓN QUERIES" ? "Se procedió con la creación de índices compuestos y revisión de planes de ejecución." : 
-                      o.accion === "REFACTORIZAR CÓDIGO DE API" ? "Optimización de middlewares y reducción de llamadas redundantes a microservicios." :
-                      o.accion === "ESCALAMIENTO DE RECURSOS" ? "Ajuste de límites de CPU/RAM en el clúster de Kubernetes." :
-                      "Implementación de medidas preventivas y monitoreo avanzado."}
+                    <div style={{ fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
+                      <strong>Solución Aplicada:</strong> {o.accion === "OPTIMIZACIÓN QUERIES" ? "Se procedió con la creación de índices compuestos y revisión de planes de ejecución." :
+                        o.accion === "REFACTORIZAR CÓDIGO DE API" ? "Optimización de middlewares y reducción de llamadas redundantes a microservicios." :
+                          o.accion === "ESCALAMIENTO DE RECURSOS" ? "Ajuste de límites de CPU/RAM en el clúster de Kubernetes." :
+                            "Implementación de medidas preventivas y monitoreo avanzado."}
                     </div>
                   </div>
                 ))}
                 {(!dynamicData || dynamicData.resilience.top_offenders.length === 0) && (
-                   <p>No hay datos dinámicos de resiliencia disponibles. Por favor carga un Excel válido.</p>
+                  <p>No hay datos dinámicos de resiliencia disponibles. Por favor carga un Excel válido.</p>
                 )}
               </div>
             </div>
@@ -726,22 +816,22 @@ function App() {
             <div className="detail-section">
               <h3>Histórico de Alertas</h3>
               <p>Se han procesado un total de 13,643 alertas en el periodo actual, con un tiempo promedio de resolución de 4.2 minutos.</p>
-              <div style={{height: '250px', width: '100%', marginTop: '1.5rem'}}>
-                 <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={eventData.alertas_por_servicio}>
-                       <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                       <XAxis dataKey="servicio" tick={false} />
-                       <YAxis />
-                       <Tooltip />
-                       <Bar dataKey="alertas" fill="#0050F6" radius={[4, 4, 0, 0]} />
-                    </BarChart>
-                 </ResponsiveContainer>
+              <div style={{ height: '250px', width: '100%', marginTop: '1.5rem' }}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={eventData.alertas_por_servicio}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                    <XAxis dataKey="servicio" tick={false} />
+                    <YAxis />
+                    <Tooltip />
+                    <Bar dataKey="alertas" fill="#0050F6" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
               </div>
             </div>
             <div className="detail-section">
               <h3>Análisis Operativo</h3>
-              <div style={{background: '#F8F9FB', padding: '1.5rem', borderRadius: '8px', borderLeft: '4px solid #00DEBC'}}>
-                La mayoría de las alertas se concentran en el recurso de CPU y SQL Queries. 
+              <div style={{ background: '#F8F9FB', padding: '1.5rem', borderRadius: '8px', borderLeft: '4px solid #00DEBC' }}>
+                La mayoría de las alertas se concentran en el recurso de CPU y SQL Queries.
                 Se recomienda la optimización de los índices en las bases de datos de los servicios de MDRBBDPR.
               </div>
             </div>
@@ -752,24 +842,24 @@ function App() {
       {/* Eficiencia Modal */}
       {activeModal === 'eficiencia' && (
         <div className="modal-overlay" onClick={closeModal}>
-          <div className="modal-content" onClick={e => e.stopPropagation()} style={{maxWidth: '900px'}}>
+          <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '900px' }}>
             <button className="modal-close-btn" onClick={closeModal}>×</button>
             <div className="modal-header">
               <h2 className="modal-title">Detalle de Eficiencia Operativa</h2>
             </div>
             <div className="detail-section">
-              <div style={{display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1.5rem'}}>
-                <div style={{background: '#F4F5F7', padding: '1.5rem', borderRadius: '12px', textAlign: 'center'}}>
-                  <div style={{fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.5rem'}}>Automatización Total</div>
-                  <div style={{fontSize: '2rem', fontWeight: 700, color: '#00DEBC'}}>{eficienciaData.porcentaje_automatizacion}%</div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1.5rem' }}>
+                <div style={{ background: '#F4F5F7', padding: '1.5rem', borderRadius: '12px', textAlign: 'center' }}>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>Automatización Total</div>
+                  <div style={{ fontSize: '2rem', fontWeight: 700, color: '#00DEBC' }}>{eficienciaData.porcentaje_automatizacion}%</div>
                 </div>
-                <div style={{background: '#F4F5F7', padding: '1.5rem', borderRadius: '12px', textAlign: 'center'}}>
-                  <div style={{fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.5rem'}}>Avance del Mes</div>
-                  <div style={{fontSize: '2rem', fontWeight: 700, color: '#0050F6'}}>+{eficienciaData.avance_mes}%</div>
+                <div style={{ background: '#F4F5F7', padding: '1.5rem', borderRadius: '12px', textAlign: 'center' }}>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>Avance del Mes</div>
+                  <div style={{ fontSize: '2rem', fontWeight: 700, color: '#0050F6' }}>+{eficienciaData.avance_mes}%</div>
                 </div>
-                <div style={{background: '#F4F5F7', padding: '1.5rem', borderRadius: '12px', textAlign: 'center'}}>
-                  <div style={{fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.5rem'}}>Horas Ahorradas</div>
-                  <div style={{fontSize: '2rem', fontWeight: 700, color: 'var(--navy)'}}>{eficienciaData.horas_ahorradas}h</div>
+                <div style={{ background: '#F4F5F7', padding: '1.5rem', borderRadius: '12px', textAlign: 'center' }}>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>Horas Ahorradas</div>
+                  <div style={{ fontSize: '2rem', fontWeight: 700, color: 'var(--navy)' }}>{eficienciaData.horas_ahorradas}h</div>
                 </div>
               </div>
             </div>
@@ -777,7 +867,7 @@ function App() {
             <div className="detail-section">
               <h3>Automatizaciones Implementadas</h3>
               <div className="services-table-container">
-                <table className="services-table" style={{fontSize: '0.85rem'}}>
+                <table className="services-table" style={{ fontSize: '0.85rem' }}>
                   <thead>
                     <tr>
                       <th>Automatización</th>
@@ -791,9 +881,9 @@ function App() {
                     {automatizaciones.map((auto, idx) => (
                       <tr key={idx}>
                         <td><strong>{auto.nombre}</strong></td>
-                        <td style={{fontSize: '0.75rem'}}>{auto.descripcion}</td>
+                        <td style={{ fontSize: '0.75rem' }}>{auto.descripcion}</td>
                         <td>{auto.fecha_implementacion}</td>
-                        <td style={{color: '#16A34A', fontWeight: 700}}>{auto.ahorro_horas}h</td>
+                        <td style={{ color: '#16A34A', fontWeight: 700 }}>{auto.ahorro_horas}h</td>
                         <td>
                           <span className="capacity-badge" style={{
                             background: auto.estado === 'Activo' ? '#F0FDF4' : '#FFF7ED',
@@ -811,14 +901,14 @@ function App() {
 
             <div className="detail-section">
               <h3>Impacto y Beneficios</h3>
-              <div style={{background: 'rgba(0, 222, 188, 0.1)', padding: '1.5rem', borderRadius: '8px', borderLeft: '4px solid #00DEBC'}}>
-                <p style={{color: '#2D3142', lineHeight: 1.6, marginBottom: '1rem'}}>
-                  Las automatizaciones implementadas han generado un ahorro total de <strong style={{color: '#00DEBC'}}>{eficienciaData.horas_ahorradas} horas/mes</strong>, 
+              <div style={{ background: 'rgba(0, 222, 188, 0.1)', padding: '1.5rem', borderRadius: '8px', borderLeft: '4px solid #00DEBC' }}>
+                <p style={{ color: '#2D3142', lineHeight: 1.6, marginBottom: '1rem' }}>
+                  Las automatizaciones implementadas han generado un ahorro total de <strong style={{ color: '#00DEBC' }}>{eficienciaData.horas_ahorradas} horas/mes</strong>,
                   equivalente a <strong>{(eficienciaData.horas_ahorradas / 160).toFixed(1)} FTEs</strong>.
                 </p>
-                <p style={{color: '#2D3142', lineHeight: 1.6}}>
-                  El nivel de automatización actual del <strong style={{color: '#00DEBC'}}>{eficienciaData.porcentaje_automatizacion}%</strong> 
-                  ha permitido reducir el MTTR en un {eficienciaData.mttr_reduccion} y resolver automáticamente 
+                <p style={{ color: '#2D3142', lineHeight: 1.6 }}>
+                  El nivel de automatización actual del <strong style={{ color: '#00DEBC' }}>{eficienciaData.porcentaje_automatizacion}%</strong>
+                  ha permitido reducir el MTTR en un {eficienciaData.mttr_reduccion} y resolver automáticamente
                   {eficienciaData.incidentes_auto_resueltos} incidentes este mes.
                 </p>
               </div>
@@ -830,17 +920,17 @@ function App() {
       {/* Availability Detail Modal */}
       {activeModal === 'disponibilidad' && (
         availabilityData ? (
-          <AvailabilityModal 
-            data={availabilityData.global_availability} 
-            onClose={closeModal} 
+          <AvailabilityModal
+            data={availabilityData.global_availability}
+            onClose={closeModal}
           />
         ) : (
           <div className="modal-overlay" onClick={closeModal}>
-            <div className="modal-content" onClick={e => e.stopPropagation()} style={{maxWidth: '500px', textAlign: 'center', padding: '3rem'}}>
+            <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '500px', textAlign: 'center', padding: '3rem' }}>
               <button className="modal-close-btn" onClick={closeModal}>×</button>
-              <span className="material-icons" style={{fontSize: '3rem', color: 'var(--navy)', marginBottom: '1rem', display: 'block'}}>cloud_upload</span>
-              <h3 style={{color: 'var(--navy)', marginBottom: '0.5rem'}}>Datos no disponibles</h3>
-              <p style={{color: 'var(--text-muted)', fontSize: '0.9rem'}}>El backend no retornó datos de disponibilidad. Verifica que el archivo Excel esté cargado y el servidor esté activo.</p>
+              <span className="material-icons" style={{ fontSize: '3rem', color: 'var(--navy)', marginBottom: '1rem', display: 'block' }}>cloud_upload</span>
+              <h3 style={{ color: 'var(--navy)', marginBottom: '0.5rem' }}>Datos no disponibles</h3>
+              <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>El backend no retornó datos de disponibilidad. Verifica que el archivo Excel esté cargado y el servidor esté activo.</p>
             </div>
           </div>
         )
@@ -848,9 +938,9 @@ function App() {
 
       {/* Service Detail Modal */}
       {activeModal === 'service' && selectedService && (
-        <ServiceDetailModal 
-          service={selectedService} 
-          onClose={closeModal} 
+        <ServiceDetailModal
+          service={selectedService}
+          onClose={closeModal}
         />
       )}
 
