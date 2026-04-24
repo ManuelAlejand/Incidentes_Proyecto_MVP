@@ -1,13 +1,12 @@
 import React, { useState } from 'react';
 import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine,
-  PieChart, Pie, Cell, LineChart, Line
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  PieChart, Pie, Cell
 } from 'recharts';
 import {
   topMetrics,
   slaDesempeno,
-  topOffenders,
-  modalDisponibilidadGlobal
+  topOffenders
 } from './data';
 import { useDataStore } from './store/dataStore';
 import { AvailabilityModal } from './components/availability/AvailabilityModal';
@@ -15,6 +14,7 @@ import { ServiceDetailModal } from './components/availability/ServiceDetailModal
 import { UploadZone } from './components/UploadZone';
 import { parseIncidentsFrontend } from './services/incidentParser';
 import { IMPACT_LEVELS, getImpactLevel, getImpactOrder } from './config/impactLevels';
+import { getPieColor } from './config/chartColors';
 import { useTableFilters } from './hooks/useTableFilters';
 import { TableFilterBar } from './components/shared/TableFilterBar';
 import './index.css';
@@ -559,7 +559,7 @@ function App() {
                           <ResponsiveContainer width="100%" height="100%">
                             <PieChart>
                               <Pie data={dynamicData.by_source} innerRadius={60} outerRadius={80} paddingAngle={5} dataKey="value">
-                                {dynamicData.by_source.map((entry, index) => <Cell key={`cell-${index}`} fill={entry.color} />)}
+                                {dynamicData.by_source.map((_, index) => <Cell key={`cell-${index}`} fill={getPieColor(index)} />)}
                               </Pie>
                               <Tooltip />
                             </PieChart>
@@ -568,7 +568,7 @@ function App() {
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                           {dynamicData.by_source.map((entry: any, idx: number) => (
                             <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', fontSize: '0.9rem' }}>
-                              <div style={{ width: 14, height: 14, background: entry.color, borderRadius: 3 }}></div>
+                              <div style={{ width: 14, height: 14, background: getPieColor(idx), borderRadius: 3 }}></div>
                               <span style={{ fontWeight: 600, color: 'var(--navy)', minWidth: '120px' }}>{entry.name}</span>
                               <span style={{ color: 'var(--text-muted)' }}>{entry.count} incidentes ({entry.percentage}%)</span>
                             </div>

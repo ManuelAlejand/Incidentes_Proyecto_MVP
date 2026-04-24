@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { 
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine
 } from 'recharts';
+import { AvailabilityPieChart } from '../shared/AvailabilityPieChart';
 import type { BusinessService } from '../../types/availability';
 
 interface ServiceDetailModalProps {
@@ -88,6 +89,15 @@ export const ServiceDetailModal: React.FC<ServiceDetailModalProps> = ({ service,
             </div>
           </div>
         </div>
+
+        {/* Section: Disponibilidad por Tipo de Componente */}
+        <AvailabilityPieChart 
+          data={Object.entries(service.by_type || {}).map(([type, data]) => ({
+            type: type,
+            avg: data.avg_availability,
+            meetsTarget: data.avg_availability >= detailMeta
+          }))}
+        />
 
         {/* Section: Tendencia de Disponibilidad */}
         <div className="detail-section">

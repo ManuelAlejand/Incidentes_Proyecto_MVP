@@ -57,7 +57,7 @@ export function parseIncidentsFrontend(rawExcelData: any[], projectName?: string
 
   // Datos de resumen — tomados de la primera fila (son idénticos en todas las filas del proyecto)
   const summaryRow = projectRows[0];
-  const globalCriticals = parseInt(summaryRow["Incidentes Críticos Totales"]) || 0;
+  // const globalCriticals = parseInt(summaryRow["Incidentes Críticos Totales"]) || 0;
   const opTimeHours = parseFloat(summaryRow[COL_OP_TIME]) || 720; // Default 1 month
   const numFallasGlobal = parseInt(summaryRow[COL_FAILURES]) || 0;
 
@@ -168,7 +168,7 @@ export function parseIncidentsFrontend(rawExcelData: any[], projectName?: string
 
     // Simulación de Tendencia (Spec Sección 4B)
     const baseTrend = serviceImpact === 'Crítico' ? 98.5 : serviceImpact === 'Alto' ? 99.4 : 99.8;
-    const trend_data = ['Sep', 'Oct', 'Nov', 'Dic', 'Ene', 'Feb'].map((m, idx) => ({
+    const trend_data = ['Sep', 'Oct', 'Nov', 'Dic', 'Ene', 'Feb'].map((m) => ({
       month: m,
       availability: Number((baseTrend + (Math.random() * 0.4 - 0.2)).toFixed(2))
     }));

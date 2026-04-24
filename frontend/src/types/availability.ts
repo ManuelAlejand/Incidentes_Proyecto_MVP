@@ -48,6 +48,7 @@ export interface BusinessService {
   deployments: DeploymentHistory;
   capacity_alerts: CapacityAlerts;
   by_type: Record<string, AvailabilityByType>;
+  by_type_summary?: GlobalAvailabilityByType[];
   trend: AvailabilityTrend[];
   incident_analysis: IncidentAnalysis;
 }
